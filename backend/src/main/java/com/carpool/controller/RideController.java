@@ -41,7 +41,9 @@ public class RideController {
     }
 
     @PutMapping("/{id}/book")
-    public ResponseEntity<?> bookSeat(@PathVariable Long id, @RequestParam String clerkUserId) {
+    public ResponseEntity<?> bookSeat(@PathVariable Long id,
+                                      @RequestParam String clerkUserId,
+                                      @RequestParam(required = false) String passengerName) {
         Optional<Ride> optionalRide = rideRepository.findById(id);
         if (!optionalRide.isPresent()) {
             return ResponseEntity.notFound().build();
@@ -59,6 +61,9 @@ public class RideController {
 
         ride.setAvailableSeats(ride.getAvailableSeats() - 1);
         ride.getPassengerClerkIds().add(clerkUserId);
+        if (passengerName != null && !passengerName.isBlank()) {
+            ride.getPassengerNames().put(clerkUserId, passengerName);
+        }
         rideRepository.save(ride);
 
         return ResponseEntity.ok(ride);
@@ -89,6 +94,7 @@ public class RideController {
 
         // Remove user from passengers and restore the available seat
         ride.getPassengerClerkIds().remove(clerkUserId);
+        ride.getPassengerNames().remove(clerkUserId);
         ride.setAvailableSeats(ride.getAvailableSeats() + 1);
         rideRepository.save(ride);
 
