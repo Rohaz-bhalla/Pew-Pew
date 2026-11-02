@@ -42,6 +42,10 @@ const btnOutlinedError = `${btnBase} border border-m-error bg-transparent text-m
 const btnTextError = `${btnBase} px-3 text-m-error hover:bg-m-error-container`;
 const errorText = "mt-1 px-1 text-xs text-m-error";
 
+// Backend stores LocalDateTime (no time zone), so we send local time like 2026-11-02T09:00:00.
+// (Converting to UTC with toISOString would shift the saved time.)
+const toLocalIso = (d: Date) => format(d, "yyyy-MM-dd'T'HH:mm:ss");
+
 // Define Zod Schema for Ride Creation
 const rideSchema = z.object({
   origin: z
@@ -746,7 +750,7 @@ export default function RidesPage() {
                             onSelect={(date) => {
                               if (date) {
                                 field.onChange(
-                                  withTime(date, timeOfDay).toISOString(),
+                                  toLocalIso(withTime(date, timeOfDay)),
                                 );
                               }
                             }}
@@ -765,10 +769,7 @@ export default function RidesPage() {
                             setTimeOfDay(v);
                             if (field.value && v) {
                               field.onChange(
-                                withTime(
-                                  new Date(field.value),
-                                  v,
-                                ).toISOString(),
+                                toLocalIso(withTime(new Date(field.value), v)),
                               );
                             }
                           }}

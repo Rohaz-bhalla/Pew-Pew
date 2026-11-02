@@ -6,10 +6,14 @@ import { useUser } from "@clerk/nextjs";
 import { ArrowLeft, Car, Check } from "lucide-react";
 import { toast } from "@/components/ui/toast";
 
+// Colors, radii and font come from the theme tokens in globals.css.
+
 const btnBase =
   "inline-flex h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-full px-6 text-base font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-m-primary disabled:cursor-not-allowed disabled:border-transparent disabled:bg-m-disabled disabled:text-m-on-disabled";
 const btnFilled = `${btnBase} bg-m-primary text-m-on-primary hover:bg-m-primary-hover`;
 const btnOutlinedError = `${btnBase} border border-m-error bg-transparent text-m-error hover:bg-m-error-container`;
+const pageClass =
+  "font-m min-h-[calc(100svh-4rem)] bg-m-surface text-m-on-surface";
 
 interface Ride {
   id: number;
@@ -21,20 +25,18 @@ interface Ride {
   departureTime?: string;
   stops?: string[];
   passengerClerkIds: string[];
-  // Optional: if your backend returns passenger names, they are shown here
-  passengers?: { clerkId?: string; name?: string }[];
+  passengerNames?: Record<string, string>; // clerkId -> name
 }
 
 // Deterministic pseudo-barcode (same on server and client)
 function Barcode({ seed }: { seed: number }) {
-  // Pure per-bar hash (no variable reassignment, same result on server and client)
   const bars = Array.from({ length: 30 }, (_, i) => {
     let h = Math.imul(seed + 1, 73856093) ^ Math.imul(i + 1, 19349663);
     h = Math.imul(h ^ (h >>> 13), 1274126177);
     return 1 + ((h >>> 0) % 3);
   });
   return (
-    <div aria-hidden className="flex h-9 items-stretch gap-0.5">
+    <div aria-hidden className="flex h-10 items-stretch justify-center gap-0.5">
       {bars.map((w, i) => (
         <span key={i} className="bg-m-on-surface" style={{ width: w }} />
       ))}
@@ -148,10 +150,10 @@ function RideDetailsContent({ params }: { params: Promise<{ id: string }> }) {
 
   if (loading) {
     return (
-      <div className="font-m min-h-[calc(100svh-4rem)] bg-m-surface px-4 py-8">
-        <div className="mx-auto max-w-2xl space-y-4">
-          <div className="h-10 w-40 animate-pulse rounded-full bg-m-surface-container" />
-          <div className="h-72 animate-pulse rounded-m-card bg-m-surface-container" />
+      <div className={pageClass}>
+        <div className="mx-auto max-w-3xl space-y-4 px-4 pt-6">
+          <div className="h-10 w-32 animate-pulse rounded-full bg-m-surface-container" />
+          <div className="h-80 animate-pulse rounded-m-card bg-m-surface-container" />
         </div>
       </div>
     );
@@ -159,11 +161,11 @@ function RideDetailsContent({ params }: { params: Promise<{ id: string }> }) {
 
   if (!ride) {
     return (
-      <div className="font-m min-h-[calc(100svh-4rem)] bg-m-surface px-4 py-8">
-        <div className="mx-auto max-w-2xl space-y-4 rounded-m-sheet border border-m-outline-variant bg-m-surface-low p-8">
+      <div className={pageClass}>
+        <div className="mx-auto mt-10 max-w-md space-y-4 rounded-m-sheet border border-m-outline-variant bg-m-surface-low p-8">
           <p className="text-lg font-semibold text-m-error">Ride not found.</p>
           <p className="text-sm text-m-on-surface-variant">
-            It may have been removed by the driver.
+            It may have been removed by the person who created it.
           </p>
           <button
             type="button"
@@ -178,20 +180,22 @@ function RideDetailsContent({ params }: { params: Promise<{ id: string }> }) {
   }
 
   const isAlreadyBooked = ride.passengerClerkIds?.includes(clerkUserId);
-  const formattedDate = ride.departureTime
-    ? new Date(ride.departureTime).toLocaleString([], {
-        dateStyle: "medium",
-        timeStyle: "short",
-      })
-    : "Not scheduled";
+  const soldOut = ride.availableSeats <= 0;
 
-  // Everyone who booked this ride. Names come from `ride.passengers` when the
-  // backend provides them; otherwise we fall back to "Passenger n".
+  // Date and time shown separately, like a real boarding pass
+  const departure = ride.departureTime ? new Date(ride.departureTime) : null;
+  const dateText = departure
+    ? departure.toLocaleDateString([], { dateStyle: "medium" })
+    : "Not scheduled";
+  const timeText = departure
+    ? departure.toLocaleTimeString([], { timeStyle: "short" })
+    : "—";
+
+  // Everyone who booked this ride. Names come from `ride.passengerNames`;
+  // bookings without a saved name show as "Passenger n".
   const passengerList = (ride.passengerClerkIds ?? []).map((cid, i) => {
     const isYou = cid === clerkUserId;
-    const named =
-      ride.passengers?.find((p) => p.clerkId === cid)?.name ??
-      ride.passengers?.[i]?.name;
+    const named = ride.passengerNames?.[cid];
     const name = isYou
       ? user?.fullName || user?.username || "You"
       : named || `Passenger ${i + 1}`;
@@ -199,26 +203,22 @@ function RideDetailsContent({ params }: { params: Promise<{ id: string }> }) {
   });
 
   return (
-    <div className="font-m min-h-[calc(100svh-4rem)] bg-m-surface pb-16 text-m-on-surface">
-      {/* Top app bar */}
-      <header className="bg-m-primary px-4 pb-16 pt-6 text-m-on-primary">
-        <div className="mx-auto max-w-2xl">
-          <button
-            type="button"
-            onClick={() => router.push("/rides")}
-            className="-ml-3 inline-flex h-10 cursor-pointer items-center gap-2 rounded-full px-3 text-sm font-medium hover:bg-m-on-primary/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-m-on-primary"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            All rides
-          </button>
-        </div>
-      </header>
+    <div className={`${pageClass} pb-16`}>
+      <main className="mx-auto max-w-3xl px-4 pt-6">
+        <button
+          type="button"
+          onClick={() => router.push("/rides")}
+          className="-ml-3 mb-4 inline-flex h-10 cursor-pointer items-center gap-2 rounded-full px-3 text-sm font-medium text-m-primary transition-colors hover:bg-m-primary-container focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-m-primary"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          All rides
+        </button>
 
-      <main className="mx-auto -mt-10 max-w-2xl px-4">
+        {/* Ticket */}
         <article className="relative flex flex-col sm:flex-row">
           {/* Main section */}
           <div className="flex-1 overflow-hidden rounded-t-m-card border border-b-0 border-m-outline-variant bg-m-surface-low sm:rounded-l-m-card sm:rounded-tr-none sm:border-b sm:border-r-0">
-            <div className="flex items-center justify-between bg-m-primary px-5 py-2.5 text-m-on-primary">
+            <div className="flex items-center justify-between bg-m-primary px-6 py-3 text-m-on-primary">
               <span className="flex items-center gap-2 text-sm font-medium">
                 <Car className="h-4 w-4" />
                 {isAlreadyBooked ? "Boarding pass" : "Ride details"}
@@ -231,80 +231,81 @@ function RideDetailsContent({ params }: { params: Promise<{ id: string }> }) {
               )}
             </div>
 
-            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-5 pt-6">
+            {/* Route: names wrap instead of being cut off */}
+            <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-3 px-6 pt-6">
               <div className="min-w-0">
                 <p className="text-xs text-m-on-surface-variant">From</p>
-                <p
-                  className="truncate text-2xl font-semibold sm:text-3xl"
-                  title={ride.origin}
-                >
+                <p className="break-words text-2xl font-semibold leading-tight sm:text-3xl">
                   {ride.origin}
                 </p>
               </div>
-              <div className="flex items-center gap-2 text-m-primary">
-                <span className="w-4 border-t-2 border-dashed border-current sm:w-8" />
+              <div className="flex items-center gap-1.5 pt-7 text-m-primary">
+                <span className="w-3 border-t-2 border-dashed border-current sm:w-6" />
                 <Car className="h-5 w-5" />
-                <span className="w-4 border-t-2 border-dashed border-current sm:w-8" />
+                <span className="w-3 border-t-2 border-dashed border-current sm:w-6" />
               </div>
               <div className="min-w-0 text-right">
                 <p className="text-xs text-m-on-surface-variant">To</p>
-                <p
-                  className="truncate text-2xl font-semibold sm:text-3xl"
-                  title={ride.destination}
-                >
+                <p className="break-words text-2xl font-semibold leading-tight sm:text-3xl">
                   {ride.destination}
                 </p>
               </div>
             </div>
 
-            <dl className="mt-6 grid grid-cols-2 gap-x-4 gap-y-5 border-t-2 border-dashed border-m-outline-variant px-5 py-5">
-              <div className="min-w-0">
-                <dt className="text-xs text-m-on-surface-variant">
-                  Created by
-                </dt>
-                <dd className="flex items-center gap-2 text-base font-medium">
-                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-m-primary-container text-xs font-medium text-m-on-primary-container">
-                    {ride.driverName?.charAt(0).toUpperCase() || "?"}
+            {ride.stops && ride.stops.length > 0 && (
+              <div className="mt-4 flex flex-wrap items-center gap-2 px-6 text-sm">
+                <span className="text-m-on-surface-variant">Via</span>
+                {ride.stops.map((stop, i) => (
+                  <span
+                    key={i}
+                    className="rounded-lg bg-m-surface-container px-2.5 py-1 font-medium"
+                  >
+                    {stop}
                   </span>
-                  <span className="truncate">{ride.driverName}</span>
+                ))}
+              </div>
+            )}
+
+            {/* Date, time, seats */}
+            <dl className="mt-6 grid grid-cols-3 gap-4 border-t-2 border-dashed border-m-outline-variant px-6 pt-5">
+              <div>
+                <dt className="text-xs text-m-on-surface-variant">Date</dt>
+                <dd className="text-base font-semibold sm:text-lg">
+                  {dateText}
                 </dd>
               </div>
-              <div className="min-w-0">
-                <dt className="text-xs text-m-on-surface-variant">Departure</dt>
-                <dd className="text-base font-medium text-m-primary">
-                  {formattedDate}
+              <div>
+                <dt className="text-xs text-m-on-surface-variant">Time</dt>
+                <dd className="text-base font-semibold sm:text-lg">
+                  {timeText}
                 </dd>
               </div>
-              <div className="min-w-0">
+              <div>
                 <dt className="text-xs text-m-on-surface-variant">
-                  Available seats
+                  Seats left
                 </dt>
-                <dd className="text-base font-medium">{ride.availableSeats}</dd>
+                <dd
+                  className={`text-base font-semibold sm:text-lg ${soldOut ? "text-m-error" : ""}`}
+                >
+                  {ride.availableSeats}
+                </dd>
               </div>
-              <div className="min-w-0">
-                <dt className="text-xs text-m-on-surface-variant">Ride</dt>
-                <dd className="text-base font-medium">#{ride.id}</dd>
-              </div>
-              {ride.stops && ride.stops.length > 0 && (
-                <div className="col-span-2 min-w-0">
-                  <dt className="text-xs text-m-on-surface-variant">Stops</dt>
-                  <dd className="mt-1 flex flex-wrap gap-2">
-                    {ride.stops.map((stop, i) => (
-                      <span
-                        key={i}
-                        className="rounded-lg bg-m-surface-container px-2.5 py-1 text-sm font-medium"
-                      >
-                        {stop}
-                      </span>
-                    ))}
-                  </dd>
-                </div>
-              )}
             </dl>
+
+            {/* Created by */}
+            <div className="flex items-center gap-3 px-6 pb-6 pt-5">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-m-primary-container text-sm font-medium text-m-on-primary-container">
+                {ride.driverName?.charAt(0).toUpperCase() || "?"}
+              </span>
+              <div className="min-w-0">
+                <p className="text-xs text-m-on-surface-variant">Created by</p>
+                <p className="truncate font-medium">{ride.driverName}</p>
+              </div>
+            </div>
           </div>
 
           {/* Stub */}
-          <div className="relative flex flex-col gap-5 rounded-b-m-card border border-t-0 border-m-outline-variant bg-m-surface-low p-5 sm:w-60 sm:rounded-b-none sm:rounded-r-m-card sm:border-l-0 sm:border-t">
+          <div className="relative flex flex-col gap-5 rounded-b-m-card border border-t-0 border-m-outline-variant bg-m-surface-low p-6 sm:w-60 sm:rounded-bl-none sm:rounded-r-m-card sm:border-l-0 sm:border-t">
             {/* perforation + notches */}
             <span className="pointer-events-none absolute inset-x-4 top-0 border-t-2 border-dashed border-m-outline-variant sm:inset-x-auto sm:inset-y-4 sm:left-0 sm:border-l-2 sm:border-t-0" />
             <span className="absolute -left-3 -top-3 h-6 w-6 rounded-full bg-m-surface" />
@@ -319,16 +320,22 @@ function RideDetailsContent({ params }: { params: Promise<{ id: string }> }) {
               </p>
             </div>
 
-            {isAlreadyBooked && (
-              <div className="space-y-1">
+            {isAlreadyBooked ? (
+              <div className="space-y-2">
                 <Barcode seed={ride.id} />
-                <p className="text-xs text-m-on-surface-variant">
-                  Show this pass to your driver
+                <p className="text-center text-xs text-m-on-surface-variant">
+                  Show this pass at pickup
                 </p>
               </div>
+            ) : (
+              <p className="text-sm text-m-on-surface-variant">
+                {soldOut
+                  ? "All seats are taken."
+                  : `${ride.availableSeats} ${ride.availableSeats === 1 ? "seat" : "seats"} available`}
+              </p>
             )}
 
-            <div className="mt-auto">
+            <div className="mt-auto space-y-2">
               {isAlreadyBooked ? (
                 <button
                   type="button"
@@ -342,13 +349,14 @@ function RideDetailsContent({ params }: { params: Promise<{ id: string }> }) {
                   type="button"
                   className={btnFilled}
                   onClick={handleBookSeat}
-                  disabled={ride.availableSeats <= 0}
+                  disabled={soldOut}
                 >
-                  {ride.availableSeats > 0
-                    ? "Book seat on this ride"
-                    : "Sold out"}
+                  {soldOut ? "Sold out" : "Book seat"}
                 </button>
               )}
+              <p className="text-center text-xs text-m-on-surface-variant">
+                Ride #{ride.id}
+              </p>
             </div>
           </div>
         </article>
@@ -396,10 +404,10 @@ export default function RideDetailsPage(props: {
   return (
     <Suspense
       fallback={
-        <div className="font-m min-h-[calc(100svh-4rem)] bg-m-surface px-4 py-8">
-          <div className="mx-auto max-w-2xl space-y-4">
-            <div className="h-10 w-40 animate-pulse rounded-full bg-m-surface-container" />
-            <div className="h-72 animate-pulse rounded-m-card bg-m-surface-container" />
+        <div className={pageClass}>
+          <div className="mx-auto max-w-3xl space-y-4 px-4 pt-6">
+            <div className="h-10 w-32 animate-pulse rounded-full bg-m-surface-container" />
+            <div className="h-80 animate-pulse rounded-m-card bg-m-surface-container" />
           </div>
         </div>
       }
