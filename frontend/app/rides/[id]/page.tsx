@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { ArrowLeft, Car, Check } from "lucide-react";
 import { toast } from "@/components/ui/toast";
+import { useAuthFetch } from "@/lib/use-auth-fetch";
 
 // Colors, radii and font come from the theme tokens in globals.css.
 
@@ -22,6 +23,7 @@ interface Ride {
   price: number;
   availableSeats: number;
   driverName: string;
+  driverClerkId?: string;
   departureTime?: string;
   stops?: string[];
   passengerClerkIds: string[];
@@ -49,6 +51,7 @@ function RideDetailsContent({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const { isSignedIn, user } = useUser();
   const clerkUserId = user?.id || "";
+  const authFetch = useAuthFetch(); // fetch + login token
 
   const [ride, setRide] = useState<Ride | null>(null);
   const [loading, setLoading] = useState(true);
@@ -82,8 +85,8 @@ function RideDetailsContent({ params }: { params: Promise<{ id: string }> }) {
     }
 
     try {
-      const res = await fetch(
-        `${API_URL}/api/rides/${id}/book?clerkUserId=${clerkUserId}&passengerName=${encodeURIComponent(user?.fullName || user?.username || "")}`,
+      const res = await authFetch(
+        `${API_URL}/api/rides/${id}/book?passengerName=${encodeURIComponent(user?.fullName || user?.username || "")}`,
         {
           method: "PUT",
         },
@@ -116,12 +119,9 @@ function RideDetailsContent({ params }: { params: Promise<{ id: string }> }) {
 
   const handleCancelBooking = async () => {
     try {
-      const res = await fetch(
-        `${API_URL}/api/rides/${id}/cancel?clerkUserId=${clerkUserId}`,
-        {
-          method: "PUT",
-        },
-      );
+      const res = await authFetch(`${API_URL}/api/rides/${id}/cancel`, {
+        method: "PUT",
+      });
 
       if (res.ok) {
         const updatedRes = await fetch(`${API_URL}/api/rides/${id}`);
@@ -181,6 +181,7 @@ function RideDetailsContent({ params }: { params: Promise<{ id: string }> }) {
 
   const isAlreadyBooked = ride.passengerClerkIds?.includes(clerkUserId);
   const soldOut = ride.availableSeats <= 0;
+  const isOwnRide = !!isSignedIn && ride.driverClerkId === clerkUserId;
 
   // Date and time shown separately, like a real boarding pass
   const departure = ride.departureTime ? new Date(ride.departureTime) : null;
@@ -349,9 +350,9 @@ function RideDetailsContent({ params }: { params: Promise<{ id: string }> }) {
                   type="button"
                   className={btnFilled}
                   onClick={handleBookSeat}
-                  disabled={soldOut}
+                  disabled={soldOut || isOwnRide}
                 >
-                  {soldOut ? "Sold out" : "Book seat"}
+                  {isOwnRide ? "Your ride" : soldOut ? "Sold out" : "Book seat"}
                 </button>
               )}
               <p className="text-center text-xs text-m-on-surface-variant">

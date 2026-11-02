@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { useUser } from "@clerk/nextjs";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -29,6 +30,8 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { useAuthFetch } from "@/lib/use-auth-fetch";
+import { useRole } from "@/lib/use-role";
 
 /* Shared class strings ------------------------------------------------------ */
 const fieldClass =
@@ -75,6 +78,7 @@ interface Ride {
   price: number;
   availableSeats: number;
   driverName: string;
+  driverClerkId?: string;
   departureTime?: string;
   stops?: string[];
   passengerClerkIds: string[];
@@ -346,10 +350,10 @@ function RideRow({
           <button
             type="button"
             onClick={onBook}
-            disabled={soldOut}
+            disabled={soldOut || isOwner}
             className={btnFilled}
           >
-            {soldOut ? "Sold out" : "Book seat"}
+            {isOwner ? "Your ride" : soldOut ? "Sold out" : "Book seat"}
           </button>
         </div>
       </div>
@@ -372,6 +376,8 @@ export default function RidesPage() {
   const { isSignedIn, user } = useUser();
   const driverName = user?.fullName || user?.username || "Anonymous Driver";
   const clerkUserId = user?.id || "";
+  const authFetch = useAuthFetch(); // fetch + login token
+  const { role } = useRole(); // "rider" | "driver" | null
 
   const [rides, setRides] = useState<Ride[]>([]);
   const [loading, setLoading] = useState(true);
@@ -437,12 +443,11 @@ export default function RidesPage() {
     const newRide = {
       ...data,
       driverName,
-      passengerClerkIds: [],
       stops: stops.map((s) => s.trim()).filter(Boolean),
     };
 
     try {
-      const res = await fetch(`${API_URL}/api/rides`, {
+      const res = await authFetch(`${API_URL}/api/rides`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newRide),
@@ -483,8 +488,8 @@ export default function RidesPage() {
     }
 
     try {
-      const res = await fetch(
-        `${API_URL}/api/rides/${rideId}/book?clerkUserId=${clerkUserId}&passengerName=${encodeURIComponent(driverName)}`,
+      const res = await authFetch(
+        `${API_URL}/api/rides/${rideId}/book?passengerName=${encodeURIComponent(driverName)}`,
         { method: "PUT" },
       );
 
@@ -512,10 +517,9 @@ export default function RidesPage() {
 
   const handleCancelBooking = async (rideId: number) => {
     try {
-      const res = await fetch(
-        `${API_URL}/api/rides/${rideId}/cancel?clerkUserId=${clerkUserId}`,
-        { method: "PUT" },
-      );
+      const res = await authFetch(`${API_URL}/api/rides/${rideId}/cancel`, {
+        method: "PUT",
+      });
 
       if (res.ok) {
         fetchRides();
@@ -541,7 +545,7 @@ export default function RidesPage() {
 
   const handleDeleteRide = async (rideId: number) => {
     try {
-      const res = await fetch(`${API_URL}/api/rides/${rideId}`, {
+      const res = await authFetch(`${API_URL}/api/rides/${rideId}`, {
         method: "DELETE",
       });
 
@@ -568,7 +572,7 @@ export default function RidesPage() {
 
   const filteredRides = rides.filter((ride) => {
     if (activeTab === "mine") {
-      return ride.driverName === driverName;
+      return ride.driverClerkId === clerkUserId;
     }
     if (activeTab === "bookings") {
       return ride.passengerClerkIds?.includes(clerkUserId);
@@ -595,205 +599,227 @@ export default function RidesPage() {
 
       <main className="mx-auto -mt-12 max-w-4xl space-y-8 px-4">
         {/* Post a ride — Uber-style minimal form */}
-        <section
-          id="post-ride"
-          className="scroll-mt-6 rounded-m-sheet border border-m-outline-variant bg-m-surface-low p-6 shadow-sm sm:p-8"
-        >
-          <h2 className="mb-5 text-2xl font-semibold">Post a ride</h2>
-
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
-            {/* Origin, optional stops, destination — with route rail */}
+        {role === "rider" ? (
+          <section
+            id="post-ride"
+            className="flex flex-col gap-4 rounded-m-sheet border border-m-outline-variant bg-m-surface-low p-6 sm:flex-row sm:items-center sm:justify-between"
+          >
             <div>
-              <div className="space-y-2">
-                <div className="relative">
-                  <RailMarks position="start" />
-                  <input
-                    type="text"
-                    placeholder="Origin (e.g. Amritsar)"
-                    className={cn(fieldClass, "pl-10")}
-                    {...register("origin")}
-                  />
-                </div>
+              <h2 className="text-xl font-semibold">Looking for a ride?</h2>
+              <p className="text-m-on-surface-variant">
+                You are in rider mode. Pick a ride below to book a seat.
+              </p>
+            </div>
+            <Link
+              href="/console"
+              className="inline-flex h-10 items-center justify-center rounded-full border border-m-outline px-6 text-sm font-medium text-m-primary transition-colors hover:bg-m-surface-container focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-m-primary"
+            >
+              Switch to driver
+            </Link>
+          </section>
+        ) : (
+          <section
+            id="post-ride"
+            className="scroll-mt-6 rounded-m-sheet border border-m-outline-variant bg-m-surface-low p-6 shadow-sm sm:p-8"
+          >
+            <h2 className="mb-5 text-2xl font-semibold">Post a ride</h2>
 
-                {stops.map((stop, i) => (
-                  <div key={i} className="relative">
-                    <RailMarks position="stop" />
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
+              {/* Origin, optional stops, destination — with route rail */}
+              <div>
+                <div className="space-y-2">
+                  <div className="relative">
+                    <RailMarks position="start" />
                     <input
                       type="text"
-                      value={stop}
-                      placeholder={`Stop ${i + 1} (e.g. Ludhiana)`}
-                      aria-label={`Stop ${i + 1}`}
-                      onChange={(e) =>
-                        setStops((prev) =>
-                          prev.map((s, j) => (j === i ? e.target.value : s)),
-                        )
-                      }
-                      className={cn(fieldClass, "pl-10 pr-12")}
+                      placeholder="Origin (e.g. Amritsar)"
+                      className={cn(fieldClass, "pl-10")}
+                      {...register("origin")}
                     />
-                    <button
-                      type="button"
-                      aria-label={`Remove stop ${i + 1}`}
-                      onClick={() =>
-                        setStops((prev) => prev.filter((_, j) => j !== i))
-                      }
-                      className="absolute right-2 top-1/2 grid h-8 w-8 -translate-y-1/2 cursor-pointer place-items-center rounded-full text-m-on-surface-variant transition-colors hover:bg-m-surface-low focus-visible:outline-2 focus-visible:outline-m-primary"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
                   </div>
-                ))}
 
-                <div className="relative">
-                  <RailMarks position="end" />
-                  <input
-                    type="text"
-                    placeholder="Destination (e.g. Chandigarh)"
-                    className={cn(fieldClass, "pl-10")}
-                    {...register("destination")}
-                  />
+                  {stops.map((stop, i) => (
+                    <div key={i} className="relative">
+                      <RailMarks position="stop" />
+                      <input
+                        type="text"
+                        value={stop}
+                        placeholder={`Stop ${i + 1} (e.g. Ludhiana)`}
+                        aria-label={`Stop ${i + 1}`}
+                        onChange={(e) =>
+                          setStops((prev) =>
+                            prev.map((s, j) => (j === i ? e.target.value : s)),
+                          )
+                        }
+                        className={cn(fieldClass, "pl-10 pr-12")}
+                      />
+                      <button
+                        type="button"
+                        aria-label={`Remove stop ${i + 1}`}
+                        onClick={() =>
+                          setStops((prev) => prev.filter((_, j) => j !== i))
+                        }
+                        className="absolute right-2 top-1/2 grid h-8 w-8 -translate-y-1/2 cursor-pointer place-items-center rounded-full text-m-on-surface-variant transition-colors hover:bg-m-surface-low focus-visible:outline-2 focus-visible:outline-m-primary"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+
+                  <div className="relative">
+                    <RailMarks position="end" />
+                    <input
+                      type="text"
+                      placeholder="Destination (e.g. Chandigarh)"
+                      className={cn(fieldClass, "pl-10")}
+                      {...register("destination")}
+                    />
+                  </div>
                 </div>
-              </div>
 
-              {errors.origin && (
-                <p className={errorText}>{errors.origin.message}</p>
-              )}
-              {errors.destination && (
-                <p className={errorText}>{errors.destination.message}</p>
-              )}
+                {errors.origin && (
+                  <p className={errorText}>{errors.origin.message}</p>
+                )}
+                {errors.destination && (
+                  <p className={errorText}>{errors.destination.message}</p>
+                )}
 
-              {stops.length < 5 && (
-                <button
-                  type="button"
-                  onClick={() => setStops((prev) => [...prev, ""])}
-                  className="mt-2 inline-flex h-10 cursor-pointer items-center gap-2 rounded-full px-4 text-sm font-medium text-m-primary transition-colors hover:bg-m-primary-container focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-m-primary"
-                >
-                  <Plus className="h-4 w-4" />
-                  Add stop
-                </button>
-              )}
-            </div>
-
-            {/* Price + seats */}
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div>
-                <div className="relative">
-                  <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-base text-m-on-surface-variant">
-                    $
-                  </span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    placeholder="Price per seat"
-                    className={cn(fieldClass, noSpin, "pl-9")}
-                    {...register("price", { valueAsNumber: true })}
-                  />
-                </div>
-                {errors.price && (
-                  <p className={errorText}>{errors.price.message}</p>
+                {stops.length < 5 && (
+                  <button
+                    type="button"
+                    onClick={() => setStops((prev) => [...prev, ""])}
+                    className="mt-2 inline-flex h-10 cursor-pointer items-center gap-2 rounded-full px-4 text-sm font-medium text-m-primary transition-colors hover:bg-m-primary-container focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-m-primary"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add stop
+                  </button>
                 )}
               </div>
 
-              <div>
-                <div className="relative">
-                  <Users className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-m-on-surface-variant" />
-                  <input
-                    type="number"
-                    placeholder="Available seats"
-                    className={cn(fieldClass, noSpin, "pl-11")}
-                    {...register("availableSeats", { valueAsNumber: true })}
-                  />
+              {/* Price + seats */}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-base text-m-on-surface-variant">
+                      $
+                    </span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="Price per seat"
+                      className={cn(fieldClass, noSpin, "pl-9")}
+                      {...register("price", { valueAsNumber: true })}
+                    />
+                  </div>
+                  {errors.price && (
+                    <p className={errorText}>{errors.price.message}</p>
+                  )}
                 </div>
-                {errors.availableSeats && (
-                  <p className={errorText}>{errors.availableSeats.message}</p>
-                )}
-              </div>
-            </div>
 
-            {/* Departure date + time slot. PopoverTrigger already renders a <button>,
+                <div>
+                  <div className="relative">
+                    <Users className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-m-on-surface-variant" />
+                    <input
+                      type="number"
+                      placeholder="Available seats"
+                      className={cn(fieldClass, noSpin, "pl-11")}
+                      {...register("availableSeats", { valueAsNumber: true })}
+                    />
+                  </div>
+                  {errors.availableSeats && (
+                    <p className={errorText}>{errors.availableSeats.message}</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Departure date + time slot. PopoverTrigger already renders a <button>,
                 so it is styled directly (no nested <button> = no hydration error). */}
-            <div>
-              <Controller
-                control={control}
-                name="departureTime"
-                render={({ field }) => {
-                  // Applies the chosen HH:MM to a date and returns it
-                  const withTime = (base: Date, hhmm: string) => {
-                    const [h, m] = hhmm.split(":").map(Number);
-                    const d = new Date(base);
-                    d.setHours(h || 0, m || 0, 0, 0);
-                    return d;
-                  };
+              <div>
+                <Controller
+                  control={control}
+                  name="departureTime"
+                  render={({ field }) => {
+                    // Applies the chosen HH:MM to a date and returns it
+                    const withTime = (base: Date, hhmm: string) => {
+                      const [h, m] = hhmm.split(":").map(Number);
+                      const d = new Date(base);
+                      d.setHours(h || 0, m || 0, 0, 0);
+                      return d;
+                    };
 
-                  return (
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
-                      <Popover>
-                        <PopoverTrigger
-                          className={cn(
-                            fieldClass,
-                            "flex cursor-pointer items-center gap-3 text-left",
-                            !field.value && "text-m-on-surface-variant",
-                          )}
-                        >
-                          <CalendarIcon className="h-4 w-4 shrink-0" />
-                          <span>
-                            {field.value
-                              ? format(new Date(field.value), "PPP")
-                              : "Pick a departure date"}
-                          </span>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar
-                            mode="single"
-                            selected={
-                              field.value ? new Date(field.value) : undefined
-                            }
-                            onSelect={(date) => {
-                              if (date) {
+                    return (
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
+                        <Popover>
+                          <PopoverTrigger
+                            className={cn(
+                              fieldClass,
+                              "flex cursor-pointer items-center gap-3 text-left",
+                              !field.value && "text-m-on-surface-variant",
+                            )}
+                          >
+                            <CalendarIcon className="h-4 w-4 shrink-0" />
+                            <span>
+                              {field.value
+                                ? format(new Date(field.value), "PPP")
+                                : "Pick a departure date"}
+                            </span>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={
+                                field.value ? new Date(field.value) : undefined
+                              }
+                              onSelect={(date) => {
+                                if (date) {
+                                  field.onChange(
+                                    toLocalIso(withTime(date, timeOfDay)),
+                                  );
+                                }
+                              }}
+                            />
+                          </PopoverContent>
+                        </Popover>
+
+                        <div className="relative sm:w-44">
+                          <Clock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-m-on-surface-variant" />
+                          <input
+                            type="time"
+                            aria-label="Departure time"
+                            value={timeOfDay}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setTimeOfDay(v);
+                              if (field.value && v) {
                                 field.onChange(
-                                  toLocalIso(withTime(date, timeOfDay)),
+                                  toLocalIso(
+                                    withTime(new Date(field.value), v),
+                                  ),
                                 );
                               }
                             }}
+                            className={cn(fieldClass, "pl-11")}
                           />
-                        </PopoverContent>
-                      </Popover>
-
-                      <div className="relative sm:w-44">
-                        <Clock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-m-on-surface-variant" />
-                        <input
-                          type="time"
-                          aria-label="Departure time"
-                          value={timeOfDay}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            setTimeOfDay(v);
-                            if (field.value && v) {
-                              field.onChange(
-                                toLocalIso(withTime(new Date(field.value), v)),
-                              );
-                            }
-                          }}
-                          className={cn(fieldClass, "pl-11")}
-                        />
+                        </div>
                       </div>
-                    </div>
-                  );
-                }}
-              />
-              {errors.departureTime && (
-                <p className={errorText}>{errors.departureTime.message}</p>
-              )}
-            </div>
+                    );
+                  }}
+                />
+                {errors.departureTime && (
+                  <p className={errorText}>{errors.departureTime.message}</p>
+                )}
+              </div>
 
-            <button
-              type="submit"
-              disabled={submitting}
-              className={cn(btnFilled, "h-12! w-full text-base")}
-            >
-              {submitting ? "Publishing..." : "Publish ride"}
-            </button>
-          </form>
-        </section>
+              <button
+                type="submit"
+                disabled={submitting}
+                className={cn(btnFilled, "h-12! w-full text-base")}
+              >
+                {submitting ? "Publishing..." : "Publish ride"}
+              </button>
+            </form>
+          </section>
+        )}
 
         {/* Rides list */}
         <section className="space-y-5">
@@ -870,7 +896,7 @@ export default function RidesPage() {
 
                 const cardProps: RideCardProps = {
                   ride,
-                  isOwner: !!isSignedIn && ride.driverName === driverName,
+                  isOwner: !!isSignedIn && ride.driverClerkId === clerkUserId,
                   formattedDate,
                   onOpen: () => router.push(`/rides/${ride.id}`),
                   onBook: () => handleBookSeat(ride.id),
