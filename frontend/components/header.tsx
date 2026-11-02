@@ -11,6 +11,7 @@ import { ModeToggle } from "./ModeToggle";
 const links = [
   { href: "/", label: "Home" },
   { href: "/rides", label: "Rides" },
+  { href: "/console", label: "Console" },
 ];
 
 /** Pure view: no hooks, so it can also be used as the Suspense fallback. */
