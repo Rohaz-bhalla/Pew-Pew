@@ -78,3 +78,37 @@ export function routeMatch(
   }
   return "none";
 }
+
+// Suggestions for the city picker. People can still type any city.
+export const popularCities = [
+  "Delhi",
+  "Noida",
+  "Gurugram",
+  "Ghaziabad",
+  "Faridabad",
+  "Mumbai",
+  "Pune",
+  "Bengaluru",
+  "Chennai",
+  "Hyderabad",
+  "Kolkata",
+  "Ahmedabad",
+  "Surat",
+  "Jaipur",
+  "Ajmer",
+  "Lucknow",
+  "Kanpur",
+  "Chandigarh",
+  "Amritsar",
+  "Ludhiana",
+  "Jalandhar",
+  "Patiala",
+  "Dehradun",
+  "Bhopal",
+  "Indore",
+  "Nagpur",
+  "Patna",
+  "Ranchi",
+  "Guwahati",
+  "Kochi",
+];
