@@ -18,7 +18,7 @@ const steps = [
   {
     icon: Search,
     title: "Find or post a ride",
-    text: "Search by city, or publish your own route with price and seats.",
+    text: "Search by route, or post your own ride in a pool car or e-rickshaw.",
   },
   {
     icon: CalendarCheck,
@@ -36,17 +36,17 @@ const benefits = [
   {
     icon: Wallet,
     title: "Split the cost",
-    text: "Seat prices are set by whoever created the ride, so you know what you pay before booking.",
+    text: "The driver sets the total fare in rupees and it is split between the riders, so you see your share before booking.",
   },
   {
     icon: Leaf,
-    title: "Fewer cars on the road",
-    text: "Every filled seat is one less vehicle on the same route.",
+    title: "Share the route",
+    text: "Going the same way? Ask the driver to add your stop and share the ride.",
   },
   {
     icon: Check,
-    title: "Clear and simple",
-    text: "Seats left, departure date and price are visible on every ride.",
+    title: "Make an offer",
+    text: "Think the price is high? Make an offer. Offers that are too low are turned down right away.",
   },
 ];
 
@@ -115,8 +115,8 @@ function SamplePass() {
 
       <div className="flex items-center justify-between gap-4 rounded-b-m-card bg-m-surface-low p-5">
         <div>
-          <p className="text-xs text-m-on-surface-variant">Price per seat</p>
-          <p className="text-3xl font-semibold text-m-primary">$12</p>
+          <p className="text-xs text-m-on-surface-variant">Per person</p>
+          <p className="text-3xl font-semibold text-m-primary">₹350</p>
         </div>
         <div aria-hidden className="flex h-9 items-stretch gap-0.5">
           {sampleBars.map((w, i) => (

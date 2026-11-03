@@ -20,3 +20,15 @@ export function useAuthFetch() {
     [getToken],
   );
 }
+
+/**
+ * Turns a failed response into a readable message for the user.
+ * An empty 401 from the backend means it rejected the login token.
+ */
+export function failMessage(status: number, text: string, fallback: string) {
+  if (text) return text;
+  if (status === 401) {
+    return "The backend did not accept your login (401). Try signing out and in again.";
+  }
+  return `${fallback} (error ${status}).`;
+}
