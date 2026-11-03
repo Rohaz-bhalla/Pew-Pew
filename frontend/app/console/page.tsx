@@ -9,8 +9,10 @@ import { Car, Plus, Ticket, Trash2 } from "lucide-react";
 
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
-import { useAuthFetch } from "@/lib/use-auth-fetch";
+import { useAuthFetch, failMessage } from "@/lib/use-auth-fetch";
 import { useRole, type Role } from "@/lib/use-role";
+import { VehicleChip } from "@/components/ride-cards";
+import { rupees, type Ride } from "@/lib/ride-utils";
 
 // Colors, radii and font come from the theme tokens in globals.css.
 
@@ -22,20 +24,6 @@ const btnOutlinedError = `${btnBase} border border-m-error text-m-error hover:bg
 const btnTextError = `${btnBase} px-3 text-m-error hover:bg-m-error-container`;
 const pageClass =
   "font-m min-h-[calc(100svh-4rem)] bg-m-surface text-m-on-surface";
-
-interface Ride {
-  id: number;
-  origin: string;
-  destination: string;
-  price: number;
-  availableSeats: number;
-  driverName: string;
-  driverClerkId?: string;
-  departureTime?: string;
-  stops?: string[];
-  passengerClerkIds: string[];
-  passengerNames?: Record<string, string>;
-}
 
 function when(ride: Ride) {
   return ride.departureTime
@@ -73,13 +61,16 @@ function RiderView({
 }) {
   const router = useRouter();
   const bookings = rides.filter((r) => r.passengerClerkIds?.includes(userId));
-  const totalFare = bookings.reduce((sum, r) => sum + r.price, 0);
+  const totalFare = bookings.reduce(
+    (sum, r) => sum + (r.passengerFares?.[userId] ?? r.price),
+    0,
+  );
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-3">
         <Stat label="Active bookings" value={bookings.length} />
-        <Stat label="Total fare" value={`$${totalFare}`} />
+        <Stat label="Total fare" value={rupees(totalFare)} />
       </div>
 
       <div className="flex items-center justify-between">
@@ -109,7 +100,8 @@ function RiderView({
                   {when(ride)}
                 </p>
                 <p className="text-sm text-m-on-surface-variant">
-                  Created by {ride.driverName}, ${ride.price} per seat
+                  Created by {ride.driverName}, you pay{" "}
+                  {rupees(ride.passengerFares?.[userId] ?? ride.price)}
                 </p>
               </div>
               <div className="flex gap-2">
@@ -142,10 +134,14 @@ function DriverView({
   rides,
   userId,
   onDelete,
+  onAcceptStop,
+  onDeclineStop,
 }: {
   rides: Ride[];
   userId: string;
   onDelete: (rideId: number) => void;
+  onAcceptStop: (rideId: number, riderId: string) => void;
+  onDeclineStop: (rideId: number, riderId: string) => void;
 }) {
   const router = useRouter();
   const myRides = rides.filter((r) => r.driverClerkId === userId);
@@ -154,13 +150,20 @@ function DriverView({
     0,
   );
   const openSeats = myRides.reduce((sum, r) => sum + r.availableSeats, 0);
+  // What riders have agreed to pay so far (listed or bargained prices)
+  const earnings = myRides.reduce(
+    (sum, r) =>
+      sum + Object.values(r.passengerFares ?? {}).reduce((a, b) => a + b, 0),
+    0,
+  );
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="Rides posted" value={myRides.length} />
         <Stat label="Passengers" value={passengers} />
         <Stat label="Open seats" value={openSeats} />
+        <Stat label="Booked fares" value={rupees(earnings)} />
       </div>
 
       <div className="flex items-center justify-between">
@@ -198,13 +201,14 @@ function DriverView({
                     <p className="text-sm text-m-on-surface-variant">
                       {when(ride)}
                     </p>
+                    <VehicleChip type={ride.vehicleType} />
                   </div>
                   <div className="text-left sm:text-right">
                     <p className="text-2xl font-semibold text-m-primary">
-                      ${ride.price}
+                      {rupees(ride.price)}
                     </p>
                     <p className="text-sm text-m-on-surface-variant">
-                      {booked} booked, {ride.availableSeats} left
+                      per person, {booked} booked, {ride.availableSeats} left
                     </p>
                   </div>
                 </div>
@@ -231,6 +235,46 @@ function DriverView({
                     </div>
                   )}
                 </div>
+
+                {/* Stop requests from riders going the same way */}
+                {ride.stopRequests && ride.stopRequests.length > 0 && (
+                  <div className="space-y-2 rounded-lg bg-m-surface-container p-3">
+                    <p className="text-xs font-medium text-m-on-surface-variant">
+                      Stop requests
+                    </p>
+                    {ride.stopRequests.map((req) => (
+                      <div
+                        key={req.riderClerkId}
+                        className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <p className="text-sm">
+                          <strong>{req.riderName || "A rider"}</strong> wants a
+                          stop at <strong>{req.place}</strong>
+                        </p>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            className={btnFilled}
+                            onClick={() =>
+                              onAcceptStop(ride.id, req.riderClerkId)
+                            }
+                          >
+                            Accept
+                          </button>
+                          <button
+                            type="button"
+                            className={btnOutlined}
+                            onClick={() =>
+                              onDeclineStop(ride.id, req.riderClerkId)
+                            }
+                          >
+                            Decline
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 <div className="flex flex-wrap justify-end gap-2 border-t border-m-outline-variant pt-4">
                   <button
@@ -308,14 +352,19 @@ export default function ConsolePage() {
       } else {
         toast.add({
           type: "error",
-          description: (await res.text()) || "Failed to cancel booking.",
+          description: failMessage(
+            res.status,
+            await res.text(),
+            "Failed to cancel booking",
+          ),
         });
       }
     } catch (err) {
       console.error("Failed to cancel booking:", err);
       toast.add({
         type: "error",
-        description: "Could not connect to the server.",
+        description:
+          "Could not reach the backend (is it running? or blocked by CORS).",
       });
     }
   };
@@ -336,12 +385,60 @@ export default function ConsolePage() {
       } else {
         toast.add({
           type: "error",
-          description: (await res.text()) || "Failed to delete ride.",
+          description: failMessage(
+            res.status,
+            await res.text(),
+            "Failed to delete ride",
+          ),
         });
       }
     } catch (err) {
       console.error("Failed to delete ride:", err);
-      toast.add({ type: "error", description: "Error deleting ride." });
+      toast.add({
+        type: "error",
+        description:
+          "Could not reach the backend (is it running? or blocked by CORS).",
+      });
+    }
+  };
+
+  const handleAcceptStop = async (rideId: number, riderId: string) => {
+    try {
+      const res = await authFetch(
+        `${API_URL}/api/rides/${rideId}/stop-requests/${riderId}/accept`,
+        { method: "PUT" },
+      );
+      if (res.ok) {
+        fetchRides();
+        toast.add({ type: "success", description: "Stop added to your ride." });
+      } else {
+        toast.add({
+          type: "error",
+          description: (await res.text()) || "Could not add the stop.",
+        });
+      }
+    } catch (err) {
+      console.error("Failed to accept stop:", err);
+      toast.add({
+        type: "error",
+        description:
+          "Could not reach the backend (is it running? or blocked by CORS).",
+      });
+    }
+  };
+
+  const handleDeclineStop = async (rideId: number, riderId: string) => {
+    try {
+      const res = await authFetch(
+        `${API_URL}/api/rides/${rideId}/stop-requests/${riderId}`,
+        { method: "DELETE" },
+      );
+      if (res.ok) {
+        fetchRides();
+        toast.add({ type: "info", description: "Stop request declined." });
+      }
+    } catch (err) {
+      console.error("Failed to decline stop:", err);
     }
   };
 
@@ -457,6 +554,8 @@ export default function ConsolePage() {
             rides={rides}
             userId={userId}
             onDelete={handleDeleteRide}
+            onAcceptStop={handleAcceptStop}
+            onDeclineStop={handleDeclineStop}
           />
         ) : (
           <RiderView

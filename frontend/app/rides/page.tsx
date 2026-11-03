@@ -10,16 +10,15 @@ import * as z from "zod";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import {
-  ArrowRight,
   CalendarIcon,
   Car,
   Check,
   Clock,
   Plus,
   Search,
-  Trash2,
   Users,
   X,
+  Zap,
 } from "lucide-react";
 
 import { toast } from "@/components/ui/toast";
@@ -30,63 +29,97 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { useAuthFetch } from "@/lib/use-auth-fetch";
+import { useAuthFetch, failMessage } from "@/lib/use-auth-fetch";
 import { useRole } from "@/lib/use-role";
+import {
+  routeMatch,
+  rupees,
+  vehicles,
+  type Ride,
+  type VehicleType,
+} from "@/lib/ride-utils";
+import {
+  RideRow,
+  RideTicket,
+  type RideCardProps,
+} from "@/components/ride-cards";
 
-/* Shared class strings ------------------------------------------------------ */
+// Colors, radii and font come from the theme tokens in globals.css.
+
 const fieldClass =
   "h-12 w-full rounded-lg bg-m-surface-container px-4 text-base text-m-on-surface outline-none placeholder:text-m-on-surface-variant focus:ring-2 focus:ring-m-primary";
 const noSpin =
   "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
-const btnBase =
-  "inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-full px-6 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-m-primary disabled:cursor-not-allowed disabled:border-transparent disabled:bg-m-disabled disabled:text-m-on-disabled";
-const btnFilled = `${btnBase} bg-m-primary text-m-on-primary hover:bg-m-primary-hover`;
-const btnOutlinedError = `${btnBase} border border-m-error bg-transparent text-m-error hover:bg-m-error-container`;
-const btnTextError = `${btnBase} px-3 text-m-error hover:bg-m-error-container`;
+const btnFilled =
+  "inline-flex h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-m-primary px-6 text-base font-medium text-m-on-primary transition-colors hover:bg-m-primary-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-m-primary disabled:cursor-not-allowed disabled:bg-m-disabled disabled:text-m-on-disabled";
 const errorText = "mt-1 px-1 text-xs text-m-error";
 
 // Backend stores LocalDateTime (no time zone), so we send local time like 2026-11-02T09:00:00.
-// (Converting to UTC with toISOString would shift the saved time.)
 const toLocalIso = (d: Date) => format(d, "yyyy-MM-dd'T'HH:mm:ss");
 
+// An empty box becomes "undefined" instead of NaN
+const toNumber = (val: unknown) =>
+  val === "" ||
+  val === undefined ||
+  val === null ||
+  (typeof val === "number" && Number.isNaN(val))
+    ? undefined
+    : Number(val);
+
 // Define Zod Schema for Ride Creation
-const rideSchema = z.object({
-  origin: z
-    .string()
-    .min(2, { message: "Origin must be at least 2 characters." }),
-  destination: z
-    .string()
-    .min(2, { message: "Destination must be at least 2 characters." }),
-  price: z.preprocess(
-    (val) => (val === "" || val === undefined ? undefined : Number(val)),
-    z.number().positive({ message: "Price must be greater than 0." }),
-  ),
-  availableSeats: z.preprocess(
-    (val) => (val === "" || val === undefined ? undefined : Number(val)),
-    z.number().int().min(1, { message: "Must offer at least 1 seat." }),
-  ),
-  departureTime: z.string().min(1, { message: "Departure date is required." }),
-});
+const rideSchema = z
+  .object({
+    origin: z
+      .string()
+      .min(2, { message: "Origin must be at least 2 characters." }),
+    destination: z
+      .string()
+      .min(2, { message: "Destination must be at least 2 characters." }),
+    vehicleType: z.enum(["CAR", "E_RICKSHAW"]),
+    totalFare: z.preprocess(
+      toNumber,
+      z
+        .number({ message: "Enter the total fare in rupees." })
+        .positive({ message: "Fare must be more than 0." }),
+    ),
+    availableSeats: z.preprocess(
+      toNumber,
+      z
+        .number({ message: "Enter how many riders you can take." })
+        .int()
+        .min(1, { message: "Must offer at least 1 seat." }),
+    ),
+    // Optional: lowest price per person the driver would accept
+    minPrice: z.preprocess(
+      toNumber,
+      z.number().positive({ message: "Must be more than 0." }).optional(),
+    ),
+    departureTime: z
+      .string()
+      .min(1, { message: "Departure date is required." }),
+  })
+  .superRefine((data, ctx) => {
+    const vehicle = vehicles[data.vehicleType];
+    if (data.availableSeats > vehicle.maxSeats) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["availableSeats"],
+        message: `${vehicle.label} fits up to ${vehicle.maxSeats} riders.`,
+      });
+      return;
+    }
+    const perPerson = Math.ceil(data.totalFare / data.availableSeats);
+    if (data.minPrice !== undefined && data.minPrice >= perPerson) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["minPrice"],
+        message: `Must be less than ${rupees(perPerson)}, the per-person price.`,
+      });
+    }
+  });
 
 type RideFormInput = z.input<typeof rideSchema>;
 type RideFormOutput = z.output<typeof rideSchema>;
-
-interface Ride {
-  id: number;
-  origin: string;
-  destination: string;
-  price: number;
-  availableSeats: number;
-  driverName: string;
-  driverClerkId?: string;
-  departureTime?: string;
-  stops?: string[];
-  passengerClerkIds: string[];
-}
-
-/* -------------------------------------------------------------------------- */
-/*  Presentational pieces (no logic — handlers come in as props)               */
-/* -------------------------------------------------------------------------- */
 
 /** Route rail marks for the post form: dot (start), ring (stop), square (end). */
 function RailMarks({ position }: { position: "start" | "stop" | "end" }) {
@@ -118,253 +151,6 @@ function RailMarks({ position }: { position: "start" | "stop" | "end" }) {
   );
 }
 
-type RideCardProps = {
-  ride: Ride;
-  isOwner: boolean;
-  formattedDate: string | null;
-  onOpen: () => void;
-  onBook: () => void;
-  onCancel: () => void;
-  onDelete: () => void;
-};
-
-// Deterministic pseudo-barcode (same on server and client, so no hydration mismatch)
-function Barcode({ seed }: { seed: number }) {
-  // Pure per-bar hash (no variable reassignment, same result on server and client)
-  const bars = Array.from({ length: 30 }, (_, i) => {
-    let h = Math.imul(seed + 1, 73856093) ^ Math.imul(i + 1, 19349663);
-    h = Math.imul(h ^ (h >>> 13), 1274126177);
-    return 1 + ((h >>> 0) % 3);
-  });
-  return (
-    <div aria-hidden className="flex h-9 items-stretch gap-0.5">
-      {bars.map((w, i) => (
-        <span key={i} className="bg-m-on-surface" style={{ width: w }} />
-      ))}
-    </div>
-  );
-}
-
-/** Booked ride → boarding pass */
-function RideTicket({
-  ride,
-  isOwner,
-  formattedDate,
-  onOpen,
-  onCancel,
-  onDelete,
-}: RideCardProps) {
-  return (
-    <article
-      role="link"
-      tabIndex={0}
-      onClick={onOpen}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" && e.target === e.currentTarget) onOpen();
-      }}
-      className="relative flex cursor-pointer flex-col focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-m-primary sm:flex-row"
-    >
-      {/* Main section */}
-      <div className="flex-1 overflow-hidden rounded-t-m-card border border-b-0 border-m-outline-variant bg-m-surface-low sm:rounded-l-m-card sm:rounded-tr-none sm:border-b sm:border-r-0">
-        <div className="flex items-center justify-between bg-m-primary px-5 py-2.5 text-m-on-primary">
-          <span className="flex items-center gap-2 text-sm font-medium">
-            <Car className="h-4 w-4" />
-            Boarding pass
-          </span>
-          <span className="inline-flex items-center gap-1 rounded-full bg-m-accent px-2.5 py-0.5 text-xs font-medium text-white">
-            <Check className="h-3 w-3" />
-            Booked by you
-          </span>
-        </div>
-
-        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-5 pt-5">
-          <div className="min-w-0">
-            <p className="text-xs text-m-on-surface-variant">From</p>
-            <p
-              className="truncate text-2xl font-semibold text-m-on-surface sm:text-3xl"
-              title={ride.origin}
-            >
-              {ride.origin}
-            </p>
-          </div>
-          <div className="flex items-center gap-2 text-m-primary">
-            <span className="w-4 border-t-2 border-dashed border-current sm:w-10" />
-            <Car className="h-5 w-5" />
-            <span className="w-4 border-t-2 border-dashed border-current sm:w-10" />
-          </div>
-          <div className="min-w-0 text-right">
-            <p className="text-xs text-m-on-surface-variant">To</p>
-            <p
-              className="truncate text-2xl font-semibold text-m-on-surface sm:text-3xl"
-              title={ride.destination}
-            >
-              {ride.destination}
-            </p>
-          </div>
-        </div>
-
-        {ride.stops && ride.stops.length > 0 && (
-          <p className="truncate px-5 pt-3 text-sm text-m-on-surface-variant">
-            via {ride.stops.join(", ")}
-          </p>
-        )}
-
-        <dl className="mt-5 grid grid-cols-3 gap-3 border-t-2 border-dashed border-m-outline-variant px-5 py-4">
-          <div className="min-w-0">
-            <dt className="text-xs text-m-on-surface-variant">Departure</dt>
-            <dd className="text-sm font-medium text-m-on-surface">
-              {formattedDate ?? "Not scheduled"}
-            </dd>
-          </div>
-          <div className="min-w-0">
-            <dt className="text-xs text-m-on-surface-variant">Created by</dt>
-            <dd className="truncate text-sm font-medium text-m-on-surface">
-              {ride.driverName}
-            </dd>
-          </div>
-          <div className="min-w-0">
-            <dt className="text-xs text-m-on-surface-variant">Seats left</dt>
-            <dd className="text-sm font-medium text-m-on-surface">
-              {ride.availableSeats}
-            </dd>
-          </div>
-        </dl>
-      </div>
-
-      {/* Stub */}
-      <div className="relative flex flex-col gap-4 rounded-b-m-card border border-t-0 border-m-outline-variant bg-m-surface-low p-5 sm:w-56 sm:rounded-b-none sm:rounded-r-m-card sm:border-l-0 sm:border-t">
-        {/* perforation + notches */}
-        <span className="pointer-events-none absolute inset-x-4 top-0 border-t-2 border-dashed border-m-outline-variant sm:inset-x-auto sm:inset-y-4 sm:left-0 sm:border-l-2 sm:border-t-0" />
-        <span className="absolute -left-3 -top-3 h-6 w-6 rounded-full bg-m-surface" />
-        <span className="absolute -right-3 -top-3 h-6 w-6 rounded-full bg-m-surface sm:-bottom-3 sm:-left-3 sm:right-auto sm:top-auto" />
-
-        <div className="flex items-end justify-between sm:block">
-          <div>
-            <p className="text-xs text-m-on-surface-variant">Price per seat</p>
-            <p className="text-3xl font-semibold text-m-primary">
-              ${ride.price}
-            </p>
-          </div>
-          <div className="space-y-1 sm:mt-4">
-            <Barcode seed={ride.id} />
-            <p className="text-xs text-m-on-surface-variant">Ride #{ride.id}</p>
-          </div>
-        </div>
-
-        <div
-          className="mt-auto flex flex-col gap-2"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button type="button" onClick={onOpen} className={btnFilled}>
-            View details
-          </button>
-          <button type="button" onClick={onCancel} className={btnOutlinedError}>
-            Cancel booking
-          </button>
-          {isOwner && (
-            <button type="button" onClick={onDelete} className={btnTextError}>
-              <Trash2 className="h-4 w-4" />
-              Delete ride
-            </button>
-          )}
-        </div>
-      </div>
-    </article>
-  );
-}
-
-/** Not-yet-booked ride → compact M3 card */
-function RideRow({
-  ride,
-  isOwner,
-  formattedDate,
-  onOpen,
-  onBook,
-  onDelete,
-}: RideCardProps) {
-  const soldOut = ride.availableSeats <= 0;
-
-  return (
-    <article
-      role="link"
-      tabIndex={0}
-      onClick={onOpen}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" && e.target === e.currentTarget) onOpen();
-      }}
-      className="flex cursor-pointer flex-col gap-4 rounded-m-card border border-m-outline-variant bg-m-surface-low p-5 transition-colors hover:bg-m-surface-container focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-m-primary sm:flex-row sm:items-center sm:justify-between"
-    >
-      <div className="min-w-0 space-y-3">
-        <p className="flex items-center gap-2 text-lg font-semibold text-m-on-surface">
-          <span className="truncate">{ride.origin}</span>
-          <ArrowRight className="h-4 w-4 shrink-0 text-m-primary" />
-          <span className="truncate">{ride.destination}</span>
-        </p>
-        {ride.stops && ride.stops.length > 0 && (
-          <p className="truncate text-sm text-m-on-surface-variant">
-            via {ride.stops.join(", ")}
-          </p>
-        )}
-
-        <div className="flex flex-wrap items-center gap-2 text-sm text-m-on-surface-variant">
-          <span className="flex items-center gap-2 pr-1">
-            <span className="grid h-7 w-7 place-items-center rounded-full bg-m-primary-container text-xs font-medium text-m-on-primary-container">
-              {ride.driverName?.charAt(0).toUpperCase() || "?"}
-            </span>
-            Created by {ride.driverName}
-          </span>
-          {formattedDate && (
-            <span className="inline-flex items-center gap-1.5 rounded-lg bg-m-surface-container px-2.5 py-1 text-xs font-medium text-m-on-surface">
-              <CalendarIcon className="h-3.5 w-3.5" />
-              {formattedDate}
-            </span>
-          )}
-          <span
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium",
-              soldOut
-                ? "bg-m-error-container text-m-on-error-container"
-                : "bg-m-primary-container text-m-on-primary-container",
-            )}
-          >
-            <Users className="h-3.5 w-3.5" />
-            {soldOut
-              ? "Sold out"
-              : `${ride.availableSeats} ${ride.availableSeats === 1 ? "seat" : "seats"} left`}
-          </span>
-        </div>
-      </div>
-
-      <div
-        className="flex items-center justify-between gap-4 sm:flex-col sm:items-end sm:justify-center"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <p className="text-2xl font-semibold text-m-primary">${ride.price}</p>
-        <div className="flex items-center gap-1">
-          {isOwner && (
-            <button type="button" onClick={onDelete} className={btnTextError}>
-              <Trash2 className="h-4 w-4" />
-              Delete
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={onBook}
-            disabled={soldOut || isOwner}
-            className={btnFilled}
-          >
-            {isOwner ? "Your ride" : soldOut ? "Sold out" : "Book seat"}
-          </button>
-        </div>
-      </div>
-    </article>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/*  Page (logic unchanged)                                                     */
-/* -------------------------------------------------------------------------- */
-
 const tabs = [
   { id: "all", label: "All rides" },
   { id: "mine", label: "Posted by me" },
@@ -382,11 +168,11 @@ export default function RidesPage() {
   const [rides, setRides] = useState<Ride[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [cityFilter, setCityFilter] = useState("");
+  const [fromFilter, setFromFilter] = useState("");
+  const [toFilter, setToFilter] = useState("");
   const [activeTab, setActiveTab] = useState<"all" | "mine" | "bookings">(
     "all",
   );
-
   const [stops, setStops] = useState<string[]>([]);
   const [timeOfDay, setTimeOfDay] = useState("09:00");
 
@@ -397,24 +183,31 @@ export default function RidesPage() {
     control,
     handleSubmit,
     reset,
+    watch,
     formState: { errors },
   } = useForm<RideFormInput, any, RideFormOutput>({
     resolver: zodResolver(rideSchema),
     defaultValues: {
       origin: "",
       destination: "",
-      price: "" as unknown as number,
+      vehicleType: "CAR",
+      totalFare: "" as unknown as number,
       availableSeats: "" as unknown as number,
+      minPrice: "" as unknown as number,
       departureTime: "",
     },
   });
 
+  // Live "₹1000 per person" preview
+  const vehicleType = (watch("vehicleType") || "CAR") as VehicleType;
+  const fareValue = Number(watch("totalFare"));
+  const seatsValue = Number(watch("availableSeats"));
+  const perPersonPreview =
+    fareValue > 0 && seatsValue > 0 ? Math.ceil(fareValue / seatsValue) : null;
+
   const fetchRides = useCallback(async () => {
     try {
-      const url = cityFilter
-        ? `${API_URL}/api/rides?city=${encodeURIComponent(cityFilter)}`
-        : `${API_URL}/api/rides`;
-      const res = await fetch(url);
+      const res = await fetch(`${API_URL}/api/rides`);
       if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
       const data = await res.json();
       setRides(data);
@@ -423,7 +216,7 @@ export default function RidesPage() {
     } finally {
       setLoading(false);
     }
-  }, [API_URL, cityFilter]);
+  }, [API_URL]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -464,14 +257,19 @@ export default function RidesPage() {
       } else {
         toast.add({
           type: "error",
-          description: "Failed to publish ride.",
+          description: failMessage(
+            res.status,
+            await res.text(),
+            "Failed to publish ride",
+          ),
         });
       }
     } catch (err) {
       console.error("Failed to create ride:", err);
       toast.add({
         type: "error",
-        description: "Could not connect to the server.",
+        description:
+          "Could not reach the backend (is it running? or blocked by CORS).",
       });
     } finally {
       setSubmitting(false);
@@ -503,14 +301,19 @@ export default function RidesPage() {
         const errorText = await res.text();
         toast.add({
           type: "error",
-          description: errorText || "Failed to book seat.",
+          description: failMessage(
+            res.status,
+            errorText,
+            "Failed to book seat",
+          ),
         });
       }
     } catch (err) {
       console.error("Failed to book seat:", err);
       toast.add({
         type: "error",
-        description: "Failed to book seat.",
+        description:
+          "Could not reach the backend (is it running? or blocked by CORS).",
       });
     }
   };
@@ -531,14 +334,19 @@ export default function RidesPage() {
         const errorText = await res.text();
         toast.add({
           type: "error",
-          description: errorText || "Failed to cancel booking.",
+          description: failMessage(
+            res.status,
+            errorText,
+            "Failed to cancel booking",
+          ),
         });
       }
     } catch (err) {
       console.error("Failed to cancel booking:", err);
       toast.add({
         type: "error",
-        description: "Could not connect to the server.",
+        description:
+          "Could not reach the backend (is it running? or blocked by CORS).",
       });
     }
   };
@@ -558,27 +366,63 @@ export default function RidesPage() {
       } else {
         toast.add({
           type: "error",
-          description: "Failed to delete ride.",
+          description: failMessage(
+            res.status,
+            await res.text(),
+            "Failed to delete ride",
+          ),
         });
       }
     } catch (err) {
       console.error("Failed to delete ride:", err);
       toast.add({
         type: "error",
-        description: "Error deleting ride.",
+        description:
+          "Could not reach the backend (is it running? or blocked by CORS).",
       });
     }
   };
 
-  const filteredRides = rides.filter((ride) => {
-    if (activeTab === "mine") {
-      return ride.driverClerkId === clerkUserId;
-    }
+  // 1. Tabs
+  const tabRides = rides.filter((ride) => {
+    if (activeTab === "mine") return ride.driverClerkId === clerkUserId;
     if (activeTab === "bookings") {
       return ride.passengerClerkIds?.includes(clerkUserId);
     }
     return true;
   });
+
+  // 2. "I am going from X to Y": rides on that route, and rides going the same way
+  const exactRides = tabRides.filter(
+    (r) => routeMatch(r, fromFilter, toFilter) === "exact",
+  );
+  const similarRides =
+    activeTab === "all"
+      ? tabRides.filter(
+          (r) => routeMatch(r, fromFilter, toFilter) === "same-destination",
+        )
+      : [];
+
+  const renderCard = (ride: Ride) => {
+    const isBooked = ride.passengerClerkIds?.includes(clerkUserId);
+    const props: RideCardProps = {
+      ride,
+      isOwner: !!isSignedIn && ride.driverClerkId === clerkUserId,
+      fare: ride.passengerFares?.[clerkUserId] ?? ride.price,
+      formattedDate: ride.departureTime
+        ? format(new Date(ride.departureTime), "PPP, p")
+        : null,
+      onOpen: () => router.push(`/rides/${ride.id}`),
+      onBook: () => handleBookSeat(ride.id),
+      onCancel: () => handleCancelBooking(ride.id),
+      onDelete: () => handleDeleteRide(ride.id),
+    };
+    return isBooked ? (
+      <RideTicket key={ride.id} {...props} />
+    ) : (
+      <RideRow key={ride.id} {...props} />
+    );
+  };
 
   return (
     <div className="font-m min-h-[calc(100svh-4rem)] bg-m-surface pb-16 text-m-on-surface">
@@ -598,7 +442,7 @@ export default function RidesPage() {
       </header>
 
       <main className="mx-auto -mt-12 max-w-4xl space-y-8 px-4">
-        {/* Post a ride — Uber-style minimal form */}
+        {/* Post a ride (hidden in rider mode) */}
         {role === "rider" ? (
           <section
             id="post-ride"
@@ -625,6 +469,28 @@ export default function RidesPage() {
             <h2 className="mb-5 text-2xl font-semibold">Post a ride</h2>
 
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
+              {/* Vehicle: pool car or e-rickshaw */}
+              <div className="grid grid-cols-2 gap-2">
+                {(Object.keys(vehicles) as VehicleType[]).map((key) => (
+                  <label key={key} className="relative">
+                    <input
+                      type="radio"
+                      value={key}
+                      className="peer sr-only"
+                      {...register("vehicleType")}
+                    />
+                    <span className="flex h-12 cursor-pointer items-center justify-center gap-2 rounded-full border border-m-outline text-sm font-medium text-m-on-surface transition-colors hover:bg-m-surface-container peer-checked:border-transparent peer-checked:bg-m-primary-container peer-checked:text-m-on-primary-container peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-m-primary">
+                      {key === "CAR" ? (
+                        <Car className="h-4 w-4" />
+                      ) : (
+                        <Zap className="h-4 w-4" />
+                      )}
+                      {vehicles[key].label}
+                    </span>
+                  </label>
+                ))}
+              </div>
+
               {/* Origin, optional stops, destination — with route rail */}
               <div>
                 <div className="space-y-2">
@@ -696,23 +562,23 @@ export default function RidesPage() {
                 )}
               </div>
 
-              {/* Price + seats */}
+              {/* Total fare + riders */}
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <div className="relative">
                     <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-base text-m-on-surface-variant">
-                      $
+                      ₹
                     </span>
                     <input
                       type="number"
-                      step="0.01"
-                      placeholder="Price per seat"
+                      inputMode="numeric"
+                      placeholder="Total fare for the trip"
                       className={cn(fieldClass, noSpin, "pl-9")}
-                      {...register("price", { valueAsNumber: true })}
+                      {...register("totalFare", { valueAsNumber: true })}
                     />
                   </div>
-                  {errors.price && (
-                    <p className={errorText}>{errors.price.message}</p>
+                  {errors.totalFare && (
+                    <p className={errorText}>{errors.totalFare.message}</p>
                   )}
                 </div>
 
@@ -721,7 +587,8 @@ export default function RidesPage() {
                     <Users className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-m-on-surface-variant" />
                     <input
                       type="number"
-                      placeholder="Available seats"
+                      inputMode="numeric"
+                      placeholder={`Riders (max ${vehicles[vehicleType].maxSeats})`}
                       className={cn(fieldClass, noSpin, "pl-11")}
                       {...register("availableSeats", { valueAsNumber: true })}
                     />
@@ -732,8 +599,41 @@ export default function RidesPage() {
                 </div>
               </div>
 
+              {perPersonPreview !== null && (
+                <p className="px-1 text-sm text-m-on-surface-variant">
+                  That is{" "}
+                  <span className="font-semibold text-m-primary">
+                    {rupees(perPersonPreview)}
+                  </span>{" "}
+                  per person.
+                </p>
+              )}
+
+              {/* Bargaining floor (optional) */}
+              <div>
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-base text-m-on-surface-variant">
+                    ₹
+                  </span>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    placeholder="Lowest price per person you accept (optional)"
+                    className={cn(fieldClass, noSpin, "pl-9")}
+                    {...register("minPrice", { valueAsNumber: true })}
+                  />
+                </div>
+                <p className="mt-1 px-1 text-xs text-m-on-surface-variant">
+                  Riders can offer a lower price. Offers below this amount are
+                  turned down. Leave empty to not take offers.
+                </p>
+                {errors.minPrice && (
+                  <p className={errorText}>{errors.minPrice.message}</p>
+                )}
+              </div>
+
               {/* Departure date + time slot. PopoverTrigger already renders a <button>,
-                so it is styled directly (no nested <button> = no hydration error). */}
+                  so it is styled directly (no nested <button> = no hydration error). */}
               <div>
                 <Controller
                   control={control}
@@ -810,11 +710,7 @@ export default function RidesPage() {
                 )}
               </div>
 
-              <button
-                type="submit"
-                disabled={submitting}
-                className={cn(btnFilled, "h-12! w-full text-base")}
-              >
+              <button type="submit" disabled={submitting} className={btnFilled}>
                 {submitting ? "Publishing..." : "Publish ride"}
               </button>
             </form>
@@ -823,48 +719,68 @@ export default function RidesPage() {
 
         {/* Rides list */}
         <section className="space-y-5">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="max-w-full overflow-x-auto">
             {/* M3 segmented button */}
-            <div className="max-w-full overflow-x-auto">
-              <div
-                role="tablist"
-                className="inline-flex overflow-hidden rounded-full border border-m-outline"
-              >
-                {tabs.map((tab, i) => {
-                  const active = activeTab === tab.id;
-                  return (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      role="tab"
-                      aria-selected={active}
-                      onClick={() => setActiveTab(tab.id)}
-                      className={cn(
-                        "flex h-10 cursor-pointer items-center gap-1.5 whitespace-nowrap px-4 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-m-primary",
-                        i > 0 && "border-l border-m-outline",
-                        active
-                          ? "bg-m-primary-container text-m-on-primary-container"
-                          : "text-m-on-surface hover:bg-m-surface-container",
-                      )}
-                    >
-                      {active && <Check className="h-4 w-4" />}
-                      {tab.label}
-                    </button>
-                  );
-                })}
-              </div>
+            <div
+              role="tablist"
+              className="inline-flex overflow-hidden rounded-full border border-m-outline"
+            >
+              {tabs.map((tab, i) => {
+                const active = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={cn(
+                      "flex h-10 cursor-pointer items-center gap-1.5 whitespace-nowrap px-4 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-m-primary",
+                      i > 0 && "border-l border-m-outline",
+                      active
+                        ? "bg-m-primary-container text-m-on-primary-container"
+                        : "text-m-on-surface hover:bg-m-surface-container",
+                    )}
+                  >
+                    {active && <Check className="h-4 w-4" />}
+                    {tab.label}
+                  </button>
+                );
+              })}
             </div>
+          </div>
 
-            {/* M3 search bar */}
-            <div className="relative md:w-72">
-              <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-m-on-surface-variant" />
-              <input
-                type="text"
-                placeholder="Filter by your city"
-                value={cityFilter}
-                onChange={(e) => setCityFilter(e.target.value)}
-                className="h-12 w-full rounded-full bg-m-surface-container pl-11 pr-4 text-sm text-m-on-surface outline-none placeholder:text-m-on-surface-variant focus:ring-2 focus:ring-m-primary"
-              />
+          {/* "I am going from ... to ..." */}
+          <div>
+            <p className="mb-2 px-1 text-sm text-m-on-surface-variant">
+              Where are you going? Rides passing through your places show up
+              too.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {[
+                {
+                  label: "From (e.g. Ludhiana)",
+                  value: fromFilter,
+                  set: setFromFilter,
+                },
+                {
+                  label: "To (e.g. Chandigarh)",
+                  value: toFilter,
+                  set: setToFilter,
+                },
+              ].map((box) => (
+                <div key={box.label} className="relative">
+                  <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-m-on-surface-variant" />
+                  <input
+                    type="text"
+                    placeholder={box.label}
+                    aria-label={box.label}
+                    value={box.value}
+                    onChange={(e) => box.set(e.target.value)}
+                    className="h-12 w-full rounded-full bg-m-surface-container pl-11 pr-4 text-sm text-m-on-surface outline-none placeholder:text-m-on-surface-variant focus:ring-2 focus:ring-m-primary"
+                  />
+                </div>
+              ))}
             </div>
           </div>
 
@@ -877,40 +793,38 @@ export default function RidesPage() {
                 />
               ))}
             </div>
-          ) : filteredRides.length === 0 ? (
+          ) : exactRides.length === 0 && similarRides.length === 0 ? (
             <div className="rounded-m-card border border-dashed border-m-outline-variant px-6 py-12 text-center text-m-on-surface-variant">
               {activeTab === "mine"
                 ? "You haven't posted any rides yet."
                 : activeTab === "bookings"
                   ? "You haven't booked any seats yet."
-                  : "No matching rides found in this city."}
+                  : "No rides found for that route."}
             </div>
           ) : (
-            <div className="grid gap-5">
-              {filteredRides.map((ride) => {
-                const isAlreadyBooked =
-                  ride.passengerClerkIds?.includes(clerkUserId);
-                const formattedDate = ride.departureTime
-                  ? format(new Date(ride.departureTime), "PPP, p")
-                  : null;
+            <>
+              {exactRides.length > 0 && (
+                <div className="grid gap-5">{exactRides.map(renderCard)}</div>
+              )}
 
-                const cardProps: RideCardProps = {
-                  ride,
-                  isOwner: !!isSignedIn && ride.driverClerkId === clerkUserId,
-                  formattedDate,
-                  onOpen: () => router.push(`/rides/${ride.id}`),
-                  onBook: () => handleBookSeat(ride.id),
-                  onCancel: () => handleCancelBooking(ride.id),
-                  onDelete: () => handleDeleteRide(ride.id),
-                };
-
-                return isAlreadyBooked ? (
-                  <RideTicket key={ride.id} {...cardProps} />
-                ) : (
-                  <RideRow key={ride.id} {...cardProps} />
-                );
-              })}
-            </div>
+              {similarRides.length > 0 && (
+                <div className="space-y-4">
+                  <div className="px-1">
+                    <h3 className="text-lg font-semibold">
+                      Going the same way
+                    </h3>
+                    <p className="text-sm text-m-on-surface-variant">
+                      These rides end at {toFilter} but do not pass through{" "}
+                      {fromFilter} yet. Open one and ask the driver to add your
+                      stop.
+                    </p>
+                  </div>
+                  <div className="grid gap-5">
+                    {similarRides.map(renderCard)}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </section>
       </main>

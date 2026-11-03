@@ -5,8 +5,11 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="c481c371-031b-4392-b0e6-188dfa8c50ca" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/src/main/java/com/carpool/model/StopRequest.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pom.xml" beforeDir="false" afterPath="$PROJECT_DIR$/pom.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/carpool/config/SecurityConfig.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/carpool/config/SecurityConfig.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/java/com/carpool/controller/RideController.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/carpool/controller/RideController.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/java/com/carpool/model/Ride.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/carpool/model/Ride.java" afterDir="false" />
     </list>
@@ -25,6 +28,18 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$/.." />
   </component>
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;Rohaz-bhalla&quot;
+  }
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/Rohaz-bhalla/Pew-Pew.git&quot;,
+    &quot;accountId&quot;: &quot;105e256b-1e7a-4e07-b3fb-ed7752f71a4b&quot;
+  }
+}</component>
   <component name="ProjectColorInfo">{
   &quot;customColor&quot;: &quot;&quot;,
   &quot;associatedIndex&quot;: 0
