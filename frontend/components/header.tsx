@@ -7,6 +7,7 @@ import { Show, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
 import { Car } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ModeToggle } from "./ModeToggle";
+import { CityPicker } from "./city-picker";
 
 const links = [
   { href: "/", label: "Home" },
@@ -71,6 +72,7 @@ export function Header() {
 
         {/* Theme + auth */}
         <div className="flex items-center gap-2">
+          <CityPicker />
           <ModeToggle />
 
           <Show when="signed-out">

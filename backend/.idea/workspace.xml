@@ -5,13 +5,11 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="c481c371-031b-4392-b0e6-188dfa8c50ca" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/src/main/java/com/carpool/model/StopRequest.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/pom.xml" beforeDir="false" afterPath="$PROJECT_DIR$/pom.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/java/com/carpool/config/SecurityConfig.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/carpool/config/SecurityConfig.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/com/carpool/controller/DbCheckController.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/carpool/controller/DbCheckController.java" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/java/com/carpool/controller/RideController.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/carpool/controller/RideController.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/carpool/model/Ride.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/carpool/model/Ride.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../frontend/app/rides/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/../frontend/app/rides/page.tsx" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -73,7 +71,7 @@
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-jdk-30f59d01ecdd-a203e0a19954-intellij.indexing.shared.core-IU-262.10968.63" />
+        <option value="bundled-jdk-30f59d01ecdd-2df11533d9fe-intellij.indexing.shared.core-IU-262.11879.100" />
       </set>
     </attachedChunks>
   </component>

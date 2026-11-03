@@ -9,14 +9,17 @@ import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtException;
+import org.springframework.security.oauth2.jwt.JwtTimestampValidator;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import java.time.Duration;
 import java.util.List;
 
 @Configuration
@@ -46,9 +49,17 @@ public class SecurityConfig {
     // Find yours in the Clerk dashboard -> API keys -> "JWKS URL".
     @Bean
     public JwtDecoder jwtDecoder(
-            @Value("${clerk.jwks-url:https://immortal-mouse-1869.clerk.accounts.dev/.well-known/jwks.json}") String jwksUrl) {
+            @Value("${clerk.jwks-url:https://immortal-mouse-1869.clerk.accounts.dev/.well-known/jwks.json}") String jwksUrl,
+            @Value("${clerk.clock-skew-seconds:60}") long clockSkewSeconds) {
         log.info("Checking Clerk logins against {}", jwksUrl);
         NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(jwksUrl).build();
+
+        // How far this computer's clock may differ from Clerk's clock.
+        // 60 seconds is the normal value. If your PC clock is wrong you get
+        // "Jwt used before ..." errors: fix the clock (best), or raise this
+        // number in application-local.properties for local testing only.
+        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
+                new JwtTimestampValidator(Duration.ofSeconds(clockSkewSeconds))));
 
         // Same as the normal decoder, but prints WHY a login token was refused
         return token -> {

@@ -10,6 +10,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -108,6 +109,11 @@ public class RideController {
 
         if (userId.equals(ride.getDriverClerkId())) {
             return ResponseEntity.badRequest().body("You cannot book your own ride");
+        }
+        // A ride that already left cannot be booked
+        if (ride.getDepartureTime() != null
+                && ride.getDepartureTime().isBefore(LocalDateTime.now())) {
+            return ResponseEntity.badRequest().body("This ride has already left");
         }
         if (ride.getAvailableSeats() <= 0) {
             return ResponseEntity.badRequest().body("No seats left");
