@@ -31,8 +31,10 @@ import {
 import { cn } from "@/lib/utils";
 import { useAuthFetch, failMessage } from "@/lib/use-auth-fetch";
 import { useRole } from "@/lib/use-role";
+import { useCity } from "@/lib/use-city";
 import {
   routeMatch,
+  routeOf,
   rupees,
   vehicles,
   type Ride,
@@ -99,6 +101,15 @@ const rideSchema = z
       .min(1, { message: "Departure date is required." }),
   })
   .superRefine((data, ctx) => {
+    // A ride cannot leave in the past (it would be hidden from every rider)
+    if (new Date(data.departureTime).getTime() < Date.now()) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["departureTime"],
+        message: "Pick a departure time in the future.",
+      });
+    }
+
     const vehicle = vehicles[data.vehicleType];
     if (data.availableSeats > vehicle.maxSeats) {
       ctx.addIssue({
@@ -160,13 +171,15 @@ const tabs = [
 export default function RidesPage() {
   const router = useRouter();
   const { isSignedIn, user } = useUser();
-  const driverName = user?.fullName || user?.username || "Anonymous Driver";
+  const driverName = user?.fullName || user?.username || "Anonymous";
   const clerkUserId = user?.id || "";
   const authFetch = useAuthFetch(); // fetch + login token
   const { role } = useRole(); // "rider" | "driver" | null
+  const { city, setCity } = useCity(); // city picked in the header
 
   const [rides, setRides] = useState<Ride[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [fromFilter, setFromFilter] = useState("");
   const [toFilter, setToFilter] = useState("");
@@ -175,6 +188,10 @@ export default function RidesPage() {
   );
   const [stops, setStops] = useState<string[]>([]);
   const [timeOfDay, setTimeOfDay] = useState("09:00");
+  // "Now" is set when the rides finish loading (not during render, which Next.js
+  // does not allow). It is used to hide rides that already left.
+  const [now, setNow] = useState(0);
+  const [showPast, setShowPast] = useState(false); // show rides that already left
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
@@ -211,8 +228,11 @@ export default function RidesPage() {
       if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
       const data = await res.json();
       setRides(data);
+      setNow(Date.now());
+      setLoadError(false);
     } catch (err) {
       console.error("Failed to fetch rides:", err);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -389,17 +409,39 @@ export default function RidesPage() {
     if (activeTab === "bookings") {
       return ride.passengerClerkIds?.includes(clerkUserId);
     }
-    return true;
+    // "All rides" only shows rides that have not left yet
+    return (
+      showPast ||
+      !ride.departureTime ||
+      new Date(ride.departureTime).getTime() >= now
+    );
   });
+
+  // Rides hidden on "All rides" because they already left
+  const pastCount =
+    activeTab === "all"
+      ? rides.filter(
+          (r) => r.departureTime && new Date(r.departureTime).getTime() < now,
+        ).length
+      : 0;
+
+  // City picked in the header: keep rides that pass through it ("All cities" keeps everything)
+  const cityText = city.trim().toLowerCase();
+  const inCity = (ride: Ride) =>
+    !cityText ||
+    activeTab !== "all" ||
+    routeOf(ride).some((place) => place.toLowerCase().includes(cityText));
 
   // 2. "I am going from X to Y": rides on that route, and rides going the same way
   const exactRides = tabRides.filter(
-    (r) => routeMatch(r, fromFilter, toFilter) === "exact",
+    (r) => inCity(r) && routeMatch(r, fromFilter, toFilter) === "exact",
   );
   const similarRides =
     activeTab === "all"
       ? tabRides.filter(
-          (r) => routeMatch(r, fromFilter, toFilter) === "same-destination",
+          (r) =>
+            inCity(r) &&
+            routeMatch(r, fromFilter, toFilter) === "same-destination",
         )
       : [];
 
@@ -784,6 +826,45 @@ export default function RidesPage() {
             </div>
           </div>
 
+          {loadError && (
+            <div
+              role="alert"
+              className="rounded-m-card bg-m-error-container px-5 py-4 text-sm text-m-on-error-container"
+            >
+              Could not load rides from the server. Is the backend running, and
+              does NEXT_PUBLIC_API_URL point to it?
+            </div>
+          )}
+
+          {activeTab === "all" && city && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-m-card bg-m-primary-container px-5 py-3 text-sm text-m-on-primary-container">
+              <span>
+                Showing rides through <strong>{city}</strong>
+              </span>
+              <button
+                type="button"
+                onClick={() => setCity("")}
+                className="cursor-pointer font-medium underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-m-primary"
+              >
+                Show all cities
+              </button>
+            </div>
+          )}
+
+          {pastCount > 0 && (
+            <p className="px-1 text-sm text-m-on-surface-variant">
+              {pastCount} {pastCount === 1 ? "ride has" : "rides have"} already
+              left.{" "}
+              <button
+                type="button"
+                onClick={() => setShowPast((v) => !v)}
+                className="cursor-pointer font-medium text-m-primary underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-m-primary"
+              >
+                {showPast ? "Hide them" : "Show them"}
+              </button>
+            </p>
+          )}
+
           {loading ? (
             <div className="grid gap-4">
               {[0, 1, 2].map((i) => (
@@ -799,7 +880,9 @@ export default function RidesPage() {
                 ? "You haven't posted any rides yet."
                 : activeTab === "bookings"
                   ? "You haven't booked any seats yet."
-                  : "No rides found for that route."}
+                  : city
+                    ? `No rides through ${city} right now. Try "All cities".`
+                    : "No rides found for that route."}
             </div>
           ) : (
             <>
