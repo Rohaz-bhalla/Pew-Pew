@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/rides")
@@ -44,6 +45,36 @@ public class RideController {
         Optional<Ride> ride = rideRepository.findById(id);
         return ride.map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.notFound().build());
     }
+    
+ // Who sees what:
+//  - the driver: every passenger's name + phone
+//  - any other signed-in user: ONLY the driver's phone (never other riders' numbers)
+@GetMapping("/{id}/contacts")
+public ResponseEntity<?> getContacts(@PathVariable Long id, @AuthenticationPrincipal Jwt jwt) {
+    Optional<Ride> optionalRide = rideRepository.findById(id);
+    if (!optionalRide.isPresent()) {
+        return ResponseEntity.notFound().build();
+    }
+    Ride ride = optionalRide.get();
+    Map<String, Object> body = new HashMap<>();
+
+    if (jwt.getSubject().equals(ride.getDriverClerkId())) {
+        List<Map<String, String>> passengers = new ArrayList<>();
+        for (String pid : ride.getPassengerClerkIds()) {
+            Map<String, String> p = new HashMap<>();
+            p.put("clerkId", pid);
+            p.put("name", ride.getPassengerNames().getOrDefault(pid, "Passenger"));
+            p.put("phone", ride.getPassengerPhones().get(pid));
+            passengers.add(p);
+        }
+        body.put("role", "DRIVER");
+        body.put("passengers", passengers);
+    } else {
+        body.put("role", "RIDER");
+        body.put("driverPhone", ride.getDriverPhone());
+    }
+    return ResponseEntity.ok(body);
+}
 
     // ---------- Logged-in users only ----------
     // jwt.getSubject() is the user's Clerk id. It comes from the verified token,
@@ -79,7 +110,14 @@ public class RideController {
             return ResponseEntity.badRequest()
                     .body("The lowest price must be more than 0 and less than " + (long) perPerson);
         }
-
+        
+        String driverPhone = normalizePhone(ride.getDriverPhone());
+        if (driverPhone == null) {
+            return ResponseEntity.badRequest().body("Enter a valid phone number");
+        }
+        ride.setDriverPhone(driverPhone);
+        ride.setPassengerPhones(new HashMap<>());
+        
         ride.setId(null);                              // always a new ride
         ride.setVehicleType(vehicle);
         ride.setTotalSeats(seats);
@@ -98,6 +136,7 @@ public class RideController {
     public ResponseEntity<?> bookSeat(@PathVariable Long id,
                                       @RequestParam(required = false) String passengerName,
                                       @RequestParam(required = false) Double offer,
+                                      @RequestParam String passengerPhone,
                                       @AuthenticationPrincipal Jwt jwt) {
         Optional<Ride> optionalRide = rideRepository.findById(id);
         if (!optionalRide.isPresent()) {
@@ -121,7 +160,11 @@ public class RideController {
         if (ride.getPassengerClerkIds().contains(userId)) {
             return ResponseEntity.badRequest().body("You have already booked a seat on this ride");
         }
-
+        
+        String phone = normalizePhone(passengerPhone);
+        if (phone == null) {
+            return ResponseEntity.badRequest().body("Enter a valid phone number");
+        }
         // Work out the price this rider pays
         double fare = ride.getPrice();
         if (offer != null && offer < ride.getPrice()) {
@@ -140,6 +183,7 @@ public class RideController {
         ride.setAvailableSeats(ride.getAvailableSeats() - 1);
         ride.getPassengerClerkIds().add(userId);
         ride.getPassengerFares().put(userId, fare);
+        ride.getPassengerPhones().put(userId, phone);
         if (passengerName != null && !passengerName.isBlank()) {
             ride.getPassengerNames().put(userId, passengerName);
         }
@@ -164,6 +208,7 @@ public class RideController {
         }
 
         ride.getPassengerClerkIds().remove(userId);
+        ride.getPassengerPhones().remove(userId);
         ride.getPassengerNames().remove(userId);
         ride.getPassengerFares().remove(userId);
         ride.setAvailableSeats(ride.getAvailableSeats() + 1);
@@ -303,5 +348,11 @@ public class RideController {
             }
         }
         return cleaned;
+    }
+ // Removes spaces/dashes; accepts 10 to 13 digits with an optional leading +
+    private String normalizePhone(String raw) {
+        if (raw == null) return null;
+        String p = raw.replaceAll("[\\s-]", "");
+        return p.matches("^\\+?[0-9]{10,13}$") ? p : null;
     }
 }

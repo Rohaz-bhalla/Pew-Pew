@@ -7,8 +7,9 @@ import { ArrowLeft, Car, Check } from "lucide-react";
 import { toast } from "@/components/ui/toast";
 import { useAuthFetch, failMessage } from "@/lib/use-auth-fetch";
 import { Barcode } from "@/components/ride-cards";
+import { RideContacts } from "@/components/ride-contacts";
 import { routeOf, rupees, vehicleLabel, type Ride } from "@/lib/ride-utils";
-
+import { usePhone } from "@/lib/use-phone";
 // Colors, radii and font come from the theme tokens in globals.css.
 
 const btnBase =
@@ -29,7 +30,7 @@ function RideDetailsContent({ params }: { params: Promise<{ id: string }> }) {
   const clerkUserId = user?.id || "";
   const myName = user?.fullName || user?.username || "";
   const authFetch = useAuthFetch(); // fetch + login token
-
+const { ensurePhone } = usePhone();
   const [ride, setRide] = useState<Ride | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -75,10 +76,20 @@ function RideDetailsContent({ params }: { params: Promise<{ id: string }> }) {
       return;
     }
 
+    // NEW: ask for (or reuse the saved) phone number
+    const phone = await ensurePhone();
+    if (!phone) {
+      toast.add({
+        type: "error",
+        description: "A valid phone number is needed to book a seat.",
+      });
+      return;
+    }
+
     try {
       const offerPart = offerAmount ? `&offer=${offerAmount}` : "";
       const res = await authFetch(
-        `${API_URL}/api/rides/${id}/book?passengerName=${encodeURIComponent(myName)}${offerPart}`,
+        `${API_URL}/api/rides/${id}/book?passengerName=${encodeURIComponent(myName)}&passengerPhone=${encodeURIComponent(phone)}${offerPart}`,
         { method: "PUT" },
       );
 
@@ -425,6 +436,12 @@ function RideDetailsContent({ params }: { params: Promise<{ id: string }> }) {
               </p>
             )}
 
+            {/* Phone numbers: the backend decides what each person may see */}
+            <RideContacts
+              key={ride.passengerClerkIds?.length ?? 0}
+              rideId={ride.id}
+            />
+
             {/* Bargain box */}
             {!isAlreadyBooked &&
               !isOwnRide &&
@@ -512,9 +529,8 @@ function RideDetailsContent({ params }: { params: Promise<{ id: string }> }) {
               {routeOf(ride).map((place, i, all) => (
                 <li key={i} className="flex items-center gap-3">
                   <span
-                    className={`h-2.5 w-2.5 shrink-0 ${
-                      i === all.length - 1 ? "" : "rounded-full"
-                    } bg-m-primary`}
+                    className={`h-2.5 w-2.5 shrink-0 ${i === all.length - 1 ? "" : "rounded-full"
+                      } bg-m-primary`}
                   />
                   <span className="font-medium">{place}</span>
                   {i === 0 && (

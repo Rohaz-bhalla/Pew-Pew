@@ -19,8 +19,10 @@ import {
   Users,
   X,
   Zap,
+  Phone,
 } from "lucide-react";
 
+import { usePhone } from "@/lib/use-phone";
 import { toast } from "@/components/ui/toast";
 import { Calendar } from "@/components/ui/calendar";
 import {
@@ -45,7 +47,6 @@ import {
   RideTicket,
   type RideCardProps,
 } from "@/components/ride-cards";
-
 // Colors, radii and font come from the theme tokens in globals.css.
 
 const fieldClass =
@@ -62,9 +63,9 @@ const toLocalIso = (d: Date) => format(d, "yyyy-MM-dd'T'HH:mm:ss");
 // An empty box becomes "undefined" instead of NaN
 const toNumber = (val: unknown) =>
   val === "" ||
-  val === undefined ||
-  val === null ||
-  (typeof val === "number" && Number.isNaN(val))
+    val === undefined ||
+    val === null ||
+    (typeof val === "number" && Number.isNaN(val))
     ? undefined
     : Number(val);
 
@@ -74,6 +75,9 @@ const rideSchema = z
     origin: z
       .string()
       .min(2, { message: "Origin must be at least 2 characters." }),
+    driverPhone: z
+      .string()
+      .regex(/^\+?[0-9\s-]{10,16}$/, { message: "Enter a valid phone number." }),
     destination: z
       .string()
       .min(2, { message: "Destination must be at least 2 characters." }),
@@ -154,7 +158,7 @@ function RailMarks({ position }: { position: "start" | "stop" | "end" }) {
           "absolute left-3.25 top-4.75 h-2.5 w-2.5",
           position === "start" && "rounded-full bg-m-primary",
           position === "stop" &&
-            "rounded-full border-2 border-m-primary bg-m-surface-low",
+          "rounded-full border-2 border-m-primary bg-m-surface-low",
           position === "end" && "bg-m-primary",
         )}
       />
@@ -174,6 +178,7 @@ export default function RidesPage() {
   const driverName = user?.fullName || user?.username || "Anonymous";
   const clerkUserId = user?.id || "";
   const authFetch = useAuthFetch(); // fetch + login token
+  const { phone: savedPhone, savePhone, ensurePhone } = usePhone();
   const { role } = useRole(); // "rider" | "driver" | null
   const { city, setCity } = useCity(); // city picked in the header
 
@@ -201,6 +206,7 @@ export default function RidesPage() {
     handleSubmit,
     reset,
     watch,
+    setValue,
     formState: { errors },
   } = useForm<RideFormInput, any, RideFormOutput>({
     resolver: zodResolver(rideSchema),
@@ -212,6 +218,7 @@ export default function RidesPage() {
       availableSeats: "" as unknown as number,
       minPrice: "" as unknown as number,
       departureTime: "",
+      driverPhone: "",
     },
   });
 
@@ -229,6 +236,7 @@ export default function RidesPage() {
       const data = await res.json();
       setRides(data);
       setNow(Date.now());
+      setRides(data);
       setLoadError(false);
     } catch (err) {
       console.error("Failed to fetch rides:", err);
@@ -243,7 +251,12 @@ export default function RidesPage() {
     fetchRides();
   }, [fetchRides]);
 
+  useEffect(() => {
+    if (savedPhone) setValue("driverPhone", savedPhone);
+  }, [savedPhone, setValue]);
+
   const onSubmit = async (data: RideFormOutput) => {
+
     if (!isSignedIn) {
       toast.add({
         type: "error",
@@ -267,7 +280,9 @@ export default function RidesPage() {
       });
 
       if (res.ok) {
+        await savePhone(data.driverPhone);
         reset();
+        setValue("driverPhone", data.driverPhone);
         setStops([]);
         fetchRides();
         toast.add({
@@ -305,9 +320,18 @@ export default function RidesPage() {
       return;
     }
 
+    const phone = await ensurePhone();
+    if (!phone) {
+      toast.add({
+        type: "error",
+        description: "A valid phone number is needed to book a seat.",
+      });
+      return;
+    }
+
     try {
       const res = await authFetch(
-        `${API_URL}/api/rides/${rideId}/book?passengerName=${encodeURIComponent(driverName)}`,
+        `${API_URL}/api/rides/${rideId}/book?passengerName=${encodeURIComponent(driverName)}&passengerPhone=${encodeURIComponent(phone)}`,
         { method: "PUT" },
       );
 
@@ -421,8 +445,8 @@ export default function RidesPage() {
   const pastCount =
     activeTab === "all"
       ? rides.filter(
-          (r) => r.departureTime && new Date(r.departureTime).getTime() < now,
-        ).length
+        (r) => r.departureTime && new Date(r.departureTime).getTime() < now,
+      ).length
       : 0;
 
   // City picked in the header: keep rides that pass through it ("All cities" keeps everything)
@@ -439,10 +463,10 @@ export default function RidesPage() {
   const similarRides =
     activeTab === "all"
       ? tabRides.filter(
-          (r) =>
-            inCity(r) &&
-            routeMatch(r, fromFilter, toFilter) === "same-destination",
-        )
+        (r) =>
+          inCity(r) &&
+          routeMatch(r, fromFilter, toFilter) === "same-destination",
+      )
       : [];
 
   const renderCard = (ride: Ride) => {
@@ -751,7 +775,21 @@ export default function RidesPage() {
                   <p className={errorText}>{errors.departureTime.message}</p>
                 )}
               </div>
-
+              <div>
+                <div className="relative">
+                  <Phone className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-m-on-surface-variant" />
+                  <input
+                    type="tel"
+                    inputMode="tel"
+                    placeholder="Your phone number (shown to riders)"
+                    className={cn(fieldClass, "pl-11")}
+                    {...register("driverPhone")}
+                  />
+                </div>
+                {errors.driverPhone && (
+                  <p className={errorText}>{errors.driverPhone.message}</p>
+                )}
+              </div>
               <button type="submit" disabled={submitting} className={btnFilled}>
                 {submitting ? "Publishing..." : "Publish ride"}
               </button>
