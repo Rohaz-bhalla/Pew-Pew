@@ -3,7 +3,6 @@ package com.carpool.controller;
 import com.carpool.model.Ride;
 import com.carpool.model.StopRequest;
 import com.carpool.repository.RideRepository;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -24,7 +23,6 @@ public class RideController {
 
     private final RideRepository rideRepository;
 
-    @Autowired
     public RideController(RideRepository rideRepository) {
         this.rideRepository = rideRepository;
     }
@@ -67,7 +65,8 @@ public class RideController {
         }
 
         // The driver enters the TOTAL fare in rupees; we split it between the riders.
-        // Example: 4000 for 4 riders = 1000 each. (Rounded up so the driver is not short.)
+        // Example: 4000 for 4 riders = 1000 each. (Rounded up so the driver is not
+        // short.)
         if (ride.getTotalFare() == null || ride.getTotalFare() <= 0) {
             return ResponseEntity.badRequest().body("Enter the total fare in rupees");
         }
@@ -80,14 +79,14 @@ public class RideController {
                     .body("The lowest price must be more than 0 and less than " + (long) perPerson);
         }
 
-        ride.setId(null);                              // always a new ride
+        ride.setId(null); // always a new ride
         ride.setVehicleType(vehicle);
         ride.setTotalSeats(seats);
         ride.setPrice(perPerson);
-        ride.setDriverClerkId(jwt.getSubject());       // owner = the logged-in user
+        ride.setDriverClerkId(jwt.getSubject()); // owner = the logged-in user
         ride.setStops(cleanStops(ride.getStops()));
         ride.setStopRequests(new ArrayList<>());
-        ride.setPassengerClerkIds(new ArrayList<>());  // nobody has booked yet
+        ride.setPassengerClerkIds(new ArrayList<>()); // nobody has booked yet
         ride.setPassengerNames(new HashMap<>());
         ride.setPassengerFares(new HashMap<>());
         return ResponseEntity.ok(rideRepository.save(ride));
@@ -96,9 +95,9 @@ public class RideController {
     // Book a seat. If "offer" is given, the rider is bargaining.
     @PutMapping("/{id}/book")
     public ResponseEntity<?> bookSeat(@PathVariable Long id,
-                                      @RequestParam(required = false) String passengerName,
-                                      @RequestParam(required = false) Double offer,
-                                      @AuthenticationPrincipal Jwt jwt) {
+            @RequestParam(required = false) String passengerName,
+            @RequestParam(required = false) Double offer,
+            @AuthenticationPrincipal Jwt jwt) {
         Optional<Ride> optionalRide = rideRepository.findById(id);
         if (!optionalRide.isPresent()) {
             return ResponseEntity.notFound().build();
@@ -193,9 +192,9 @@ public class RideController {
 
     @PostMapping("/{id}/stop-requests")
     public ResponseEntity<?> requestStop(@PathVariable Long id,
-                                         @RequestParam String place,
-                                         @RequestParam(required = false) String riderName,
-                                         @AuthenticationPrincipal Jwt jwt) {
+            @RequestParam String place,
+            @RequestParam(required = false) String riderName,
+            @AuthenticationPrincipal Jwt jwt) {
         Optional<Ride> optionalRide = rideRepository.findById(id);
         if (!optionalRide.isPresent()) {
             return ResponseEntity.notFound().build();
@@ -239,8 +238,8 @@ public class RideController {
     // Driver says yes: the place becomes a stop on the ride
     @PutMapping("/{id}/stop-requests/{riderId}/accept")
     public ResponseEntity<?> acceptStop(@PathVariable Long id,
-                                        @PathVariable String riderId,
-                                        @AuthenticationPrincipal Jwt jwt) {
+            @PathVariable String riderId,
+            @AuthenticationPrincipal Jwt jwt) {
         Optional<Ride> optionalRide = rideRepository.findById(id);
         if (!optionalRide.isPresent()) {
             return ResponseEntity.notFound().build();
@@ -271,8 +270,8 @@ public class RideController {
     // Driver says no, or the rider withdraws their own request
     @DeleteMapping("/{id}/stop-requests/{riderId}")
     public ResponseEntity<?> removeStopRequest(@PathVariable Long id,
-                                               @PathVariable String riderId,
-                                               @AuthenticationPrincipal Jwt jwt) {
+            @PathVariable String riderId,
+            @AuthenticationPrincipal Jwt jwt) {
         Optional<Ride> optionalRide = rideRepository.findById(id);
         if (!optionalRide.isPresent()) {
             return ResponseEntity.notFound().build();

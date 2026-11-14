@@ -28,19 +28,35 @@ public class SecurityConfig {
     private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
 
     // Rules:
-    //  - Anyone can LOOK at rides (GET).
-    //  - Posting, booking, cancelling and deleting need a valid Clerk login token.
+    // - Anyone can LOOK at rides (GET).
+    // - Posting, booking, cancelling and deleting need a valid Clerk login token.
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .cors(Customizer.withDefaults())
-                .csrf(AbstractHttpConfigurer::disable) // we use tokens, not cookies
+                .csrf(AbstractHttpConfigurer::disable)
+
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/error").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/", "/db-check", "/api/rides", "/api/rides/**").permitAll()
+                        .requestMatchers("/ws", "/ws/**").permitAll()
+
+                        // Tracking requires login
+                        .requestMatchers(HttpMethod.GET, "/api/rides/*/tracking").authenticated()
+
+                        // Anyone can view rides
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/", "/db-check", "/api/rides", "/api/rides/**")
+                        .permitAll()
+
+                        // All other operations require login
                         .anyRequest().authenticated())
-                .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));
+
+                // IMPORTANT: Enable Clerk JWT authentication
+                .oauth2ResourceServer(oauth2 -> oauth2
+                        .jwt(Customizer.withDefaults()));
+
         return http.build();
     }
 
@@ -77,7 +93,7 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource(
             @Value("${app.cors.allowed-origin:http://localhost:3000}") String allowedOrigin) {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of(allowedOrigin));
+        config.setAllowedOriginPatterns(List.of(allowedOrigin, "http://localhost:*", "http://127.0.0.1:*"));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
 
