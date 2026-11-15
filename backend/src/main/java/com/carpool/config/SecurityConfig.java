@@ -39,6 +39,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/error").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/rides/*/contacts").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/", "/db-check", "/api/rides", "/api/rides/**").permitAll()
                         .requestMatchers("/ws", "/ws/**").permitAll()
 
                         // Tracking requires login
@@ -64,8 +66,9 @@ public class SecurityConfig {
     // This URL is public (not a secret), so it is safe to keep in the project.
     // Find yours in the Clerk dashboard -> API keys -> "JWKS URL".
     @Bean
+    
     public JwtDecoder jwtDecoder(
-            @Value("${clerk.jwks-url:https://immortal-mouse-1869.clerk.accounts.dev/.well-known/jwks.json}") String jwksUrl,
+            @Value("${clerk.jwks-url:https://adapting-grackle-365.clerk.accounts.dev/.well-known/jwks.json}") String jwksUrl,
             @Value("${clerk.clock-skew-seconds:60}") long clockSkewSeconds) {
         log.info("Checking Clerk logins against {}", jwksUrl);
         NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(jwksUrl).build();

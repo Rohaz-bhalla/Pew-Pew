@@ -13,6 +13,7 @@ import { useAuthFetch, failMessage } from "@/lib/use-auth-fetch";
 import { useRole, type Role } from "@/lib/use-role";
 import { VehicleChip } from "@/components/ride-cards";
 import { rupees, type Ride } from "@/lib/ride-utils";
+import { RideContacts } from "@/components/ride-contacts";
 
 // Colors, radii and font come from the theme tokens in globals.css.
 
@@ -235,6 +236,12 @@ function DriverView({
                     </div>
                   )}
                 </div>
+                
+                <div>
+                  ...existing block...
+                </div>
+
+                {booked > 0 && <RideContacts rideId={ride.id} />}
 
                 {/* Stop requests from riders going the same way */}
                 {ride.stopRequests && ride.stopRequests.length > 0 && (
@@ -508,6 +515,7 @@ export default function ConsolePage() {
           </div>
         </div>
       </div>
+
     );
   }
 
@@ -566,5 +574,6 @@ export default function ConsolePage() {
         )}
       </main>
     </div>
+
   );
 }

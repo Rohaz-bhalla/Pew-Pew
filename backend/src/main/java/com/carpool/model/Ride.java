@@ -1,14 +1,21 @@
 package com.carpool.model;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
-import jakarta.persistence.*;
-import lombok.Data;
-
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
+import jakarta.persistence.ElementCollection;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import lombok.Data;
 
 @Entity
 @Table(name = "rides")
@@ -56,7 +63,13 @@ public class Ride {
     // clerkUserId -> the price that rider agreed to pay (listed price or a bargained one)
     @ElementCollection
     private Map<String, Double> passengerFares = new HashMap<>();
-
+    
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+    private String driverPhone;
+    
+    @JsonIgnore
+    @ElementCollection
+    private Map<String, String> passengerPhones = new HashMap<>();
     // Tells the frontend whether to show the "Make an offer" box
     @JsonProperty("bargainEnabled")
     public boolean isBargainEnabled() {
