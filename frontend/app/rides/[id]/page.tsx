@@ -10,6 +10,8 @@ import { Barcode } from "@/components/ride-cards";
 import { RideContacts } from "@/components/ride-contacts";
 import { routeOf, rupees, vehicleLabel, type Ride } from "@/lib/ride-utils";
 import { usePhone } from "@/lib/use-phone";
+import { LiveTrackingCard } from "@/components/live-tracking-card";
+
 // Colors, radii and font come from the theme tokens in globals.css.
 
 const btnBase =
@@ -311,6 +313,11 @@ const { ensurePhone } = usePhone();
 
         {/* Ticket */}
         <article className="relative flex flex-col sm:flex-row">
+          {(isOwnRide || isAlreadyBooked) && (
+            <div className="mt-6">
+              <LiveTrackingCard rideId={ride.id} />
+            </div>
+          )}
           {/* Main section */}
           <div className="flex-1 overflow-hidden rounded-t-m-card border border-b-0 border-m-outline-variant bg-m-surface-low sm:rounded-l-m-card sm:rounded-tr-none sm:border-b sm:border-r-0">
             <div className="flex items-center justify-between bg-m-primary px-6 py-3 text-m-on-primary">
