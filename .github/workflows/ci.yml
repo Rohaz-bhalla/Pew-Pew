@@ -1,0 +1,39 @@
+name: Validate Docker builds
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'docker-compose.yml'
+      - 'nginx/**'
+      - '.github/workflows/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build backend image
+        run: docker build -f backend/Dockerfile -t pew-pew-backend:ci ./backend
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build frontend image
+        env:
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL }}
+        run: |
+          test -n "$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" || (echo "Missing repository variable NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY"; exit 1)
+          test -n "$NEXT_PUBLIC_API_URL" || (echo "Missing repository variable NEXT_PUBLIC_API_URL"; exit 1)
+          docker build -f frontend/Dockerfile \
+            --build-arg NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" \
+            --build-arg NEXT_PUBLIC_API_URL="$NEXT_PUBLIC_API_URL" \
+            -t pew-pew-frontend:ci ./frontend
