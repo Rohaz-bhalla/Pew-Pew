@@ -31,11 +31,13 @@ jobs:
           AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
           NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
           NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL }}
+          EC2_INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
         run: |
           test -n "$AWS_REGION" || (echo "Missing repository variable AWS_REGION"; exit 1)
           test -n "$AWS_ACCOUNT_ID" || (echo "Missing repository variable AWS_ACCOUNT_ID"; exit 1)
           test -n "$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" || (echo "Missing repository variable NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY"; exit 1)
           test -n "$NEXT_PUBLIC_API_URL" || (echo "Missing repository variable NEXT_PUBLIC_API_URL"; exit 1)
+          test -n "$EC2_INSTANCE_ID" || (echo "Missing repository variable EC2_INSTANCE_ID"; exit 1)
 
       - name: Configure AWS credentials with OIDC
         uses: aws-actions/configure-aws-credentials@v6.3.0
@@ -63,19 +65,36 @@ jobs:
             -t "$ECR_REGISTRY/pew-pew-frontend:$IMAGE_TAG" ./frontend
           docker push "$ECR_REGISTRY/pew-pew-frontend:$IMAGE_TAG"
 
-      - name: Deploy on EC2 over SSH
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-          script: |
-            set -eu
-            cd /opt/pew-pew
-            export ECR_REGISTRY="${{ env.ECR_REGISTRY }}"
-            export IMAGE_TAG="${{ env.IMAGE_TAG }}"
-            aws ecr get-login-password --region "${{ env.AWS_REGION }}" | docker login --username AWS --password-stdin "$ECR_REGISTRY"
-            docker compose config --quiet
-            docker compose pull
-            docker compose up -d --remove-orphans
-            docker image prune -af
+      - name: Deploy to EC2 through AWS Systems Manager
+        env:
+          EC2_INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
+        run: |
+          DEPLOY_SCRIPT=$(cat <<EOF
+          set -eu
+          cd /opt/pew-pew
+          export ECR_REGISTRY="$ECR_REGISTRY"
+          export IMAGE_TAG="$IMAGE_TAG"
+          aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REGISTRY"
+          docker compose config --quiet
+          docker compose pull
+          docker compose up -d --remove-orphans
+          docker image prune -af
+          EOF
+          )
+
+          PARAMETERS=$(jq -n --arg command "$DEPLOY_SCRIPT" '{commands: [$command]}')
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "$EC2_INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --parameters "$PARAMETERS" \
+            --comment "Deploy Pew-Pew $IMAGE_TAG" \
+            --query "Command.CommandId" \
+            --output text)
+
+          echo "SSM deployment command: $COMMAND_ID"
+          aws ssm wait command-executed --command-id "$COMMAND_ID" --instance-id "$EC2_INSTANCE_ID"
+          aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$EC2_INSTANCE_ID" \
+            --query '{Status:Status,Output:StandardOutputContent,Error:StandardErrorContent}' \
+            --output json
