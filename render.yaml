@@ -1,0 +1,37 @@
+databases:
+  - name: pew-pew-db
+    plan: free
+    databaseName: appdb
+    user: pewpew_user
+
+services:
+  - type: web
+    name: pew-pew-backend
+    env: docker
+    image:
+      url: ghcr.io/your_github_username/pew-pew-backend:latest
+    plan: free
+    envVars:
+      - key: SPRING_DATASOURCE_URL
+        value: jdbc:postgresql://${PEW_PEW_DB_HOST}:${PEW_PEW_DB_PORT}/${PEW_PEW_DB_NAME}
+      - key: SPRING_DATASOURCE_USERNAME
+        fromDatabase:
+          name: pew-pew-db
+          property: user
+      - key: SPRING_DATASOURCE_PASSWORD
+        fromDatabase:
+          name: pew-pew-db
+          property: password
+
+  - type: web
+    name: pew-pew-frontend
+    env: docker
+    image:
+      url: ghcr.io/your_github_username/pew-pew-frontend:latest
+    plan: free
+    envVars:
+      - key: NEXT_PUBLIC_API_BASE_URL
+        fromService:
+          type: web
+          name: pew-pew-backend
+          property: url

@@ -68,7 +68,7 @@ public class SecurityConfig {
     @Bean
     
     public JwtDecoder jwtDecoder(
-            @Value("${clerk.jwks-url:https://adapting-grackle-365.clerk.accounts.dev/.well-known/jwks.json}") String jwksUrl,
+            @Value("${clerk.jwks-url:https://integral-rooster-9343.clerk.accounts.dev/.well-known/jwks.json}") String jwksUrl,
             @Value("${clerk.clock-skew-seconds:60}") long clockSkewSeconds) {
         log.info("Checking Clerk logins against {}", jwksUrl);
         NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(jwksUrl).build();
