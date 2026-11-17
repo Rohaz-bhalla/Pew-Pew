@@ -9,7 +9,7 @@ services:
     name: pew-pew-backend
     runtime: image
     image:
-      url: ghcr.io/Rohaz-bhalla/pew-pew-backend:latest
+      url: ghcr.io/rohaz-bhalla/pew-pew-backend:latest
     plan: free
     envVars:
       - key: SPRING_DATASOURCE_URL
@@ -27,7 +27,7 @@ services:
     name: pew-pew-frontend
     runtime: image
     image:
-      url: ghcr.io/Rohaz-bhalla/pew-pew-frontend:latest
+      url: ghcr.io/rohaz-bhalla/pew-pew-frontend:latest
     plan: free
     envVars:
       - key: NEXT_PUBLIC_API_BASE_URL
