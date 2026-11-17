@@ -1,0 +1,41 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ECRAuthentication",
+      "Effect": "Allow",
+      "Action": ["ecr:GetAuthorizationToken"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "PushPewPewImages",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:CompleteLayerUpload",
+        "ecr:InitiateLayerUpload",
+        "ecr:PutImage",
+        "ecr:UploadLayerPart"
+      ],
+      "Resource": [
+        "arn:aws:ecr:YOUR_REGION:YOUR_AWS_ACCOUNT_ID:repository/pew-pew-backend",
+        "arn:aws:ecr:YOUR_REGION:YOUR_AWS_ACCOUNT_ID:repository/pew-pew-frontend"
+      ]
+    },
+    {
+      "Sid": "DeployToOnlyThisEC2Instance",
+      "Effect": "Allow",
+      "Action": ["ssm:SendCommand"],
+      "Resource": [
+        "arn:aws:ssm:YOUR_REGION::document/AWS-RunShellScript",
+        "arn:aws:ec2:YOUR_REGION:YOUR_AWS_ACCOUNT_ID:instance/YOUR_EC2_INSTANCE_ID"
+      ]
+    },
+    {
+      "Sid": "ReadSSMCommandResult",
+      "Effect": "Allow",
+      "Action": ["ssm:GetCommandInvocation"],
+      "Resource": "*"
+    }
+  ]
+}
