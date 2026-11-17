@@ -51,7 +51,7 @@ export default function LiveMap({
       center={[22.97, 78.65]}
       zoom={5}
       scrollWheelZoom={false}
-      className="isolate h-80 w-full rounded-m-card" // "isolate" keeps Leaflet below your sticky header
+      className="isolate h-72 w-full rounded" // "isolate" keeps Leaflet below your sticky header
     >
       <TileLayer
         url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"

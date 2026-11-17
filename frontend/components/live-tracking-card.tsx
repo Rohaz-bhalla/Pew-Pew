@@ -8,7 +8,7 @@ import { useLiveTracking } from "@/lib/use-live-tracking";
 const LiveMap = dynamic(() => import("./live-map"), {
   ssr: false,
   loading: () => (
-    <div className="h-80 animate-pulse rounded-m-card bg-m-surface-container" />
+    <div className="h-72 animate-pulse rounded-m-card bg-m-surface-container sm:h-96" />
   ),
 });
 
