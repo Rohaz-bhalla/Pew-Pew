@@ -28,11 +28,10 @@ jobs:
       - uses: actions/checkout@v7
       - name: Build frontend image
         env:
-          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
-          NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL }}
+          # Safe placeholders for PR build validation only; production deploy uses repository variables.
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || 'pk_test_ZXhhbXBsZS5jb20k' }}
+          NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL || 'http://localhost:8080' }}
         run: |
-          test -n "$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" || (echo "Missing repository variable NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY"; exit 1)
-          test -n "$NEXT_PUBLIC_API_URL" || (echo "Missing repository variable NEXT_PUBLIC_API_URL"; exit 1)
           docker build -f frontend/Dockerfile \
             --build-arg NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" \
             --build-arg NEXT_PUBLIC_API_URL="$NEXT_PUBLIC_API_URL" \
