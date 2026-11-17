@@ -7,9 +7,9 @@ databases:
 services:
   - type: web
     name: pew-pew-backend
-    env: docker
+    runtime: image
     image:
-      url: ghcr.io/your_github_username/pew-pew-backend:latest
+      url: ghcr.io/rohazbhalla/pew-pew-backend:latest
     plan: free
     envVars:
       - key: SPRING_DATASOURCE_URL
@@ -25,13 +25,10 @@ services:
 
   - type: web
     name: pew-pew-frontend
-    env: docker
+    runtime: image
     image:
-      url: ghcr.io/your_github_username/pew-pew-frontend:latest
+      url: ghcr.io/rohazbhalla/pew-pew-frontend:latest
     plan: free
     envVars:
       - key: NEXT_PUBLIC_API_BASE_URL
-        fromService:
-          type: web
-          name: pew-pew-backend
-          property: url
+        value: https://pew-pew-backend.onrender.com
